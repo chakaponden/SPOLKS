@@ -1,0 +1,8 @@
+i=0
+while [ $i -lt 1000 ]
+do
+  netcat 192.168.1.4 44444
+  let "i += 1"
+  pkill netcat
+  echo $i
+done
