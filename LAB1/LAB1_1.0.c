@@ -14,18 +14,17 @@ int ind = 0;											// indicator that any socket in open
 void hdl(int sig, siginfo_t *siginfo, void *context)				// handler for SIGINT (Ctrl+C) signal
 {
     if (sig==SIGINT)
-    {	  
+    {	 
+	if(close(listenSock) < 0)			
+		perror("sgn close listenSock");
+	else
+		ind-=2;
 	if(ind)   
 	{
 		if(close(workSock) < 0)		
 			perror("sgn close workSock");	
 		else
 			ind--;
-	}
-	if(close(listenSock) < 0)	
-	{		
-		perror("sgn close listenSock");
-		ind+=2;
 	}
     }
 }
@@ -42,6 +41,7 @@ int clientProcessing(char *hostName, char *port)
         	perror("func socket");
         	return -1;
     	}    
+	ind+=2;
     	hostAddr.sin_family = AF_INET;
     	hostAddr.sin_port = htons(atoi(port));					// convert host byte order -> network byte order		
 	if(!htons(inet_aton(hostName, hostAddr.sin_addr.s_addr)))	// new func convert IPv4 char* -> IPv4 bin (+ host byte order -> network byte order too) 
@@ -71,7 +71,7 @@ int clientProcessing(char *hostName, char *port)
 			perror("func accept");
             		return -2;    
         	}
-		ind = 1;
+		ind++;
        		while(1)										// if any key is pressed -> exit from while loop
         	{			
 			printf("+\n");
@@ -94,7 +94,7 @@ int clientProcessing(char *hostName, char *port)
 			perror("func close workSock");
 			return -2;
 		}	
-		ind = 0;
+		ind--;
 		printf("-\n");
     	}	
 	return 0;	
@@ -119,7 +119,7 @@ int main(int argc, char *argv[])
 	{
 		case -1:
 		{			 
-			if(ind > 2)
+			if(ind > 1)
 			{
 				if(close(listenSock) < 0)		
 				{
@@ -130,21 +130,22 @@ int main(int argc, char *argv[])
 			break;
 		}
 		case -2:
-		{			
-			if(ind == 1 || ind == 3)
-			{
-				if(close(workSock) < 0)		
-				{
-					perror("main close workSock");	
-					return -1;					
-				}
-			}
+		{	
 			if(ind > 1)
 			{
 				if(close(listenSock) < 0)		
 				{
 					perror("main close listenSock");	
 					return -1;
+				}
+				ind-=2;
+			}
+			if(ind)
+			{
+				if(close(workSock) < 0)		
+				{
+					perror("main close workSock");	
+					return -1;					
 				}
 			}
 			break;
