@@ -69,7 +69,7 @@ int clientProcessing(char *hostName, char *port)
 		if(((workSock) = accept((listenSock), 0, 0)) < 0)		// wait for client
 		{
 			perror("func accept");
-            		return -2;    
+            		return -1;    
         	}
 		ind++;
        		while(1)										// if any key is pressed -> exit from while loop
@@ -79,20 +79,20 @@ int clientProcessing(char *hostName, char *port)
 													// receive from client
 			{
 				perror("func recv");
-				return -2;
+				return -1;
 			}	
 			if(!readBytes)
 				break;
             		if(send((workSock), buf, readBytes, 0) < 0)		// send to client
 			{
 				perror("func send");
-				return -2;
+				return -1;
 			}				
        		}   			
         	if(close((workSock)) < 0)							// close connection
 		{
 			perror("func close workSock");
-			return -2;
+			return -1;
 		}	
 		ind--;
 		printf("-\n");
@@ -115,43 +115,23 @@ int main(int argc, char *argv[])
 		perror("main sigaction");
 		return -1;
 	}	
-	switch (clientProcessing(argv[1], argv[2]))
+	clientProcessing(argv[1], argv[2]);
+	if(ind > 1)
 	{
-		case -1:
-		{			 
-			if(ind > 1)
-			{
-				if(close(listenSock) < 0)		
-				{
-					perror("main close listenSock");	
-					return -1;
-				}
-			}
-			break;
+		if(close(listenSock) < 0)		
+		{
+			perror("main close listenSock");	
+			return -1;
 		}
-		case -2:
-		{	
-			if(ind > 1)
-			{
-				if(close(listenSock) < 0)		
-				{
-					perror("main close listenSock");	
-					return -1;
-				}
-				ind-=2;
-			}
-			if(ind)
-			{
-				if(close(workSock) < 0)		
-				{
-					perror("main close workSock");	
-					return -1;					
-				}
-			}
-			break;
+		ind-=2;
+	}
+	if(ind)
+	{
+		if(close(workSock) < 0)		
+		{
+			perror("main close workSock");	
+			return -1;					
 		}
-		default:
-			break;
-	}			
+	}
     	return 0;
 }
