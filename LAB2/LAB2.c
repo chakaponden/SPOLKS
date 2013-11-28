@@ -270,7 +270,7 @@ int main(int argc, char *argv[])
 	struct sigaction closeTerm, sendOOB, recvOOB;
 	closeTerm.sa_sigaction =&hdl_SIGINT;
 	closeTerm.sa_flags = SA_SIGINFO;
-	if(sigaction(SIGINT, &closeTerm, NULL) < 0)					// set handler for SIGINT signal (CTRL+C)
+	if(sigaction(SIGINT, &closeTerm, NULL) < 0)			// set handler for SIGINT signal (CTRL+C)
 	{
 		perror("main sigaction closeTerm");
 		return -1;
@@ -279,7 +279,7 @@ int main(int argc, char *argv[])
 	{
 	  recvOOB.sa_sigaction =&hdl_SIGURG;
 	  recvOOB.sa_flags = SA_SIGINFO;
-	  if(sigaction(SIGURG, &recvOOB, NULL) < 0)					// set handler for SIGURG signal
+	  if(sigaction(SIGURG, &recvOOB, NULL) < 0)			// set handler for SIGURG signal
 	  {
 		  perror("main sigaction recvOOB");
 		  return -1;
@@ -288,7 +288,7 @@ int main(int argc, char *argv[])
 	}
 	if(!strcmp(argv[1], "client"))
 	{										
-	  if(access(argv[4], F_OK ) < 0)						// check file exist
+	  if(access(argv[4], F_OK ) < 0)				// check file exist
 	  {
 	    printf("file %s does not exist\n", argv[4]);
 	    perror("invalid fileName");
@@ -296,7 +296,7 @@ int main(int argc, char *argv[])
 	  }
 	  sendOOB.sa_sigaction =&hdl_SIGTSTP;
 	  sendOOB.sa_flags = SA_SIGINFO;
-	  if(sigaction(SIGTSTP, &sendOOB, NULL) < 0)					// set handler for SIGTSTP signal (CTRL+Z)
+	  if(sigaction(SIGTSTP, &sendOOB, NULL) < 0)			// set handler for SIGTSTP signal (CTRL+Z)
 	  {
 		  perror("main sigaction sendOOB");
 		  return -1;
