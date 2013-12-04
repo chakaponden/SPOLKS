@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <fcntl.h>
+#include <errno.h>
 
 
 #define	MAX_PENDING		1						// max pending client connections
@@ -58,9 +59,13 @@ void hdl_SIGURG(int sig, siginfo_t *siginfo, void *context)			// handler for OOB
   if(sig==SIGURG)
   {
     uint8_t buf = 0;
-    //if(recv(workSock, &buf, sizeof(buf), MSG_OOB) < 0)			// recv return to perror "Resource temporarily unavailable"
-    //  perror("func recv SIGURG");      
-    //printf("signal SIGURG. OOB data received: %d\n", buf);
+    if(recv(workSock, &buf, sizeof(buf), MSG_OOB | MSG_WAITALL) < 0)			// recv return to perror "Resource temporarily unavailable"
+    {
+      printf("errno %d\n", errno);
+      perror("func recv SIGURG");  
+      
+    }
+    printf("signal SIGURG. OOB data received: %d\n", buf);
     printf("%lld bytes for download left\n", (fileSize - filePointer));
   }
 }
@@ -219,7 +224,8 @@ int startServer(char *hostName, char *port)
 			  if((readBytes = recv(workSock, (char*)&buf, BUFFER_SIZE, 0)) < 0)
 										  // receive data from client
 			  {
-				  perror("func recv");
+				  perror("func recv data");
+				  printf("errno data %d\n", errno);
 				  return -1;
 			  }
 			  //printf("server_readbytes %d\n", readBytes);
