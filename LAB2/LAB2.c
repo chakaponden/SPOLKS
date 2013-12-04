@@ -400,13 +400,13 @@ int main(int argc, char *argv[])
 	
 	if(!strcmp(argv[1], "server"))	
 	{
-	 /* recvOOB.sa_sigaction =&hdl_SIGURG;
+	  recvOOB.sa_sigaction =&hdl_SIGURG;
 	  recvOOB.sa_flags = SA_SIGINFO;
 	  if(sigaction(SIGURG, &recvOOB, NULL) < 0)			// set handler for SIGURG signal
 	  {
 		  perror("main sigaction recvOOB");
 		  return -1;
-	  }*/
+	  }
 	  startServer(argv[2], argv[3]);	
 	}
 	if(!strcmp(argv[1], "client"))
