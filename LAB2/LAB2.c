@@ -187,21 +187,21 @@ int startServer(char *hostName, char *port)
 			      printf("Resume downloading %lld bytes %s file? Y/N\nY = resume, N = redownload\n",
 										(fileSize-localFileSize), filePath);
 			      fgets(c, sizeof(c)*sizeof(char), stdin);		// input
-			      if(c[0] == 'Y')					// press 'N'
-			      {
-				file = fopen(filePath, "wb");			// create file
-				filePointer = 0;					
-			      }
-			      else						// press 'Y'
+			      if(c[0] == 'Y')					// press 'Y'
 			      {
 				file = fopen(filePath, "ab");			// open file at end
-				filePointer = ftell(file);;
+				filePointer = ftell(file);;					
+			      }
+			      else						// press 'N'
+			      {
+				file = fopen(filePath, "wb");			// create file
+				filePointer = 0;
 			      }
 			    }	
 			  }			 
 			  printf("server_recv_fileSize  filePointer %lld\n",  filePointer);
 			  if(!readBytes)
-				break;										// send num bytes already received (filePointer)
+				break;						// send num bytes already received (filePointer)
 			  if(send(workSock, (char*)&filePointer, sizeof(long long), 0) < 0)										
 			  {
 			    perror("func send");
@@ -316,19 +316,19 @@ int startClient(char *hostName, char *port, char *filePath)
 		while((readBytes = fread(&buf, sizeof(char), BUFFER_SIZE, file)) > 0)
 		{
 		  filePointer = ftell(file);
-		  printf("client_send_fread %d\n", readBytes);
+		  //printf("client_send_fread %d\n", readBytes);
 		  if(select(0,NULL,&temp,NULL,&time_out) < 0)												//Проверяем, имеются ли внеполосные данные
 		  {
 		    puts("server timeout 10s reached");
 		    break;
 		  }   		
-		  printf("client_select filePointer %lld\n", filePointer);
+		  //printf("client_select filePointer %lld\n", filePointer);
 		  if(send(listenSock, (char*)&buf, readBytes, 0) < 0)
 		  {
 		    perror("func send fileFragment");
 		    return -1;
 		  }  
-		  puts("client_send_fieFragment");
+		  //puts("client_send_fieFragment");
 		}
 		puts("client_close_socket");
 		if(close(listenSock) < 0)			
