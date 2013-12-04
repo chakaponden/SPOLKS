@@ -7,6 +7,7 @@
 #include <signal.h> 
 #include <unistd.h>
 #include <string.h>
+#include <fcntl.h>
 
 
 #define	MAX_PENDING		1						// max pending client connections
@@ -18,6 +19,7 @@ int workSock, listenSock;							// socket descriptors
 int ind = 0;									// indicator that any socket in open
 long long	fileSize = 2;
 long long 	filePointer = 0;
+FILE*		file;
 
 
 void hdl_SIGINT(int sig, siginfo_t *siginfo, void *context)			// handler for SIGINT (Ctrl+C) signal
@@ -35,6 +37,8 @@ void hdl_SIGINT(int sig, siginfo_t *siginfo, void *context)			// handler for SIG
 		else
 			ind--;
 	}
+	if(ftell(file) >= 0)							// check is file open
+		  fclose(file);
     }
 }
 
@@ -43,9 +47,9 @@ void hdl_SIGTSTP(int sig, siginfo_t *siginfo, void *context)			// handler for SI
   if(sig==SIGTSTP)
   {
     uint8_t buf = 1;
-    send(workSock, &buf, sizeof(buf), MSG_OOB);
+    if(send(listenSock, &buf, sizeof(buf), MSG_OOB) < 0)
       perror("func send SIGTSTP");      
-    puts("signal SIGTSTP. OOB data sended");
+    printf("signal SIGTSTP. OOB data sended: %d", buf);
   }
 }
 
@@ -53,10 +57,10 @@ void hdl_SIGURG(int sig, siginfo_t *siginfo, void *context)			// handler for OOB
 {
   if(sig==SIGURG)
   {
-    uint8_t buf = 1;
-    recv(workSock, &buf, sizeof(buf), MSG_OOB);
-      perror("func send SIGUSR1");      
-    puts("signal SIGURG. OOB data received");
+    uint8_t buf = 0;
+    if(recv(workSock, &buf, sizeof(buf), MSG_OOB) < 0)
+      perror("func recv SIGURG");      
+    printf("signal SIGURG. OOB data received: %d\n", buf);
     printf("%lld bytes for download left\n", (fileSize - filePointer));
   }
 }
@@ -69,8 +73,7 @@ int startServer(char *hostName, char *port)
 	char 		buf[BUFFER_SIZE];					// buffer for incomming
 	int 		readBytes;						// count of	
 	int 		so_reuseaddr = 1;					// for setsockop SO_REUSEADDR set enable
-	int 		clientFirstPacket;					// client first packet indicator
-	FILE*		file;					
+	int 		clientFirstPacket;					// client first packet indicator					
 	char 		c[64] = {0};						// for terminal input
 	char*		filePath = (char*) malloc (MAX_FILEPATH_LENGHT*sizeof(char));
 	long long 	localFileSize = 0;
@@ -105,6 +108,7 @@ int startServer(char *hostName, char *port)
 	}
 	fd_set temp;		
 	struct timeval time_out; time_out.tv_sec = 0; time_out.tv_usec = 0;
+	fcntl(workSock, F_SETOWN, getpid()); 					// set pid which will be recieve SIGIO and SIGURG on descriptor' events
 	while(1)								// if any key is pressed -> exit from while loop
     	{		
 		printf("server_accept_wait_for_client\n");
@@ -249,8 +253,6 @@ int startClient(char *hostName, char *port, char *filePath)
 	char 		buf[BUFFER_SIZE];					// buffer for outcomming
 	int 		readBytes;						// count of	
 	int 		so_reuseaddr = 1;					// for setsockop SO_REUSEADDR set enable
-	FILE*		file;							
-
 	ind+=2;
     	hostAddr.sin_family = AF_INET;
     	hostAddr.sin_port = htons(atoi(port));					// convert host byte order -> network byte order		
@@ -401,5 +403,7 @@ int main(int argc, char *argv[])
 			return -1;					
 		}
 	}
+	if(ftell(file) >= 0)						// check is file open
+		  fclose(file);
     	return 0;
 }
