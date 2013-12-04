@@ -172,8 +172,8 @@ int startServer(char *hostName, char *port)
 			    return -1;
 			  }
 			  printf("server_recv fileSize %lld\n",  fileSize);
-			  if(!readBytes)
-				  break;
+			  //if(!readBytes)
+			  //	  break;
 			  //printf("server_first_realloc\n"); 
 			 
 			  filePath[readBytes] = '\0';
@@ -216,7 +216,7 @@ int startServer(char *hostName, char *port)
 			      if(c[0] == 'Y')					// press 'Y'
 			      {
 				file = fopen(filePath, "ab");			// open file at end
-				filePointer = ftell(file);;					
+				filePointer = localFileSize-1;					
 			      }
 			      else						// press 'N'
 			      {
@@ -226,8 +226,8 @@ int startServer(char *hostName, char *port)
 			    }	
 			  }			 
 			  printf("server_recv_fileSize  filePointer %lld\n",  filePointer);
-			  if(!readBytes)
-				break;						// send num bytes already received (filePointer)
+			  //if(!readBytes)
+			  //	break;						// send num bytes already received (filePointer)
 			  if(send(workSock, (char*)&filePointer, sizeof(long long), 0) < 0)										
 			  {
 			    perror("func send");
@@ -245,12 +245,11 @@ int startServer(char *hostName, char *port)
 				  return -1;
 			  }
 			  printf("server_readbytes %d\n", readBytes);
-			  if(!readBytes)
-			    break;
-			  filePointer = ftell(file);	
+			  //if(!readBytes)
+			  //  break;
+			  filePointer += readBytes;	
 			  printf("server_fwrite filePointer %lld\n",  filePointer);
-			  fwrite((char*)buf, readBytes, 1, file);
-			  filePointer = ftell(file);
+			  fwrite((char*)buf, readBytes, 1, file);			  
 			  printf("server_fwrite2 filePointer2 %lld\n",  filePointer);
 			}
 		}
