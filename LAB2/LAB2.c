@@ -185,8 +185,7 @@ int startServer(char *hostName, char *port)
 				file = fopen(filePath, "ab");			// open file at end
 				filePointer = ftell(file);;
 			      }
-			    }			      
-			    else  
+			    }	
 			  }			 
 			  printf("server_recv_fileSize  filePointer %lld\n",  filePointer);
 			  if(!readBytes)
@@ -299,7 +298,7 @@ int startClient(char *hostName, char *port, char *filePath)
 		}		
 		
 		printf("client_recvFilePointer_fromServer %lld\n", filePointer);
-		fseek(file, filePointer, SEEK_BEG);
+		fseek(file, filePointer, SEEK_SET);
 		
 		while((readBytes = fread(&buf, sizeof(char), BUFFER_SIZE, file)) > 0)
 		{
