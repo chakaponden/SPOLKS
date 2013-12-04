@@ -43,13 +43,22 @@ void hdl_SIGINT(int sig, siginfo_t *siginfo, void *context)			// handler for SIG
     }
 }
 
+void hdl_SIGPIPE(int sig, siginfo_t *siginfo, void *context)			// handler for SIGPIPE signal
+{
+  if(sig==SIGPIPE)
+    fprintf(stderr, "pipe is broken");
+}
+
 void hdl_SIGTSTP(int sig, siginfo_t *siginfo, void *context)			// handler for SIGTSTP (Ctrl+Z) signal
 {
   if(sig==SIGTSTP)
   {
     uint8_t buf = 5;
     if(send(listenSock, &buf, sizeof(buf), MSG_OOB) < 0)
+    {
+      printf("errno %d\n", errno);
       perror("func send SIGTSTP");      
+    }
     printf("signal SIGTSTP. OOB data sended: %d\n", buf);
   }
 }
@@ -59,7 +68,7 @@ void hdl_SIGURG(int sig, siginfo_t *siginfo, void *context)			// handler for OOB
   if(sig==SIGURG)
   {
     uint8_t buf = 0;
-    if(recv(workSock, &buf, sizeof(buf), MSG_OOB | MSG_WAITALL) < 0)			// recv return to perror "Resource temporarily unavailable"
+    if(recv(workSock, &buf, sizeof(buf), MSG_OOB | MSG_WAITALL) < 0)		// recv return to perror "Resource temporarily unavailable"
     {
       printf("errno %d\n", errno);
       perror("func recv SIGURG");       
@@ -117,9 +126,7 @@ int startServer(char *hostName, char *port)
 	while(1)								// if any key is pressed -> exit from while loop
     	{		
 		//printf("server_accept_wait_for_client\n");
-		clientFirstPacket = 1;
-		FD_ZERO (&temp);
-		FD_SET (workSock,&temp);
+		clientFirstPacket = 1;		
 		filePointer = 0;
 		fileSize = 2;
 		if(((workSock) = accept((listenSock), 0, 0)) < 0)		// wait for client
@@ -127,12 +134,14 @@ int startServer(char *hostName, char *port)
 			perror("func accept");
             		return -1;    
         	}
-        	//fcntl(workSock, F_SETOWN, getpid()); 				// set pid which will be recieve SIGIO and SIGURG on descriptor' events
+        	fcntl(workSock, F_SETOWN, getpid()); 				// set pid which will be recieve SIGIO and SIGURG on descriptor' events
+        	FD_ZERO (&temp);
+		FD_SET (workSock,&temp);        	
 		ind++;		
        		while(filePointer+1 < fileSize)							
         	{						
 			//printf("server_select %lld %lld\n", filePointer, fileSize);
-			if(select(0,NULL,NULL,&temp,&time_out))
+			/*if(select(0,NULL,NULL,&temp,&time_out) == 1)
 			{	
 			  bufOOBin = 0;
 			  if(recv(workSock, &bufOOBin, sizeof(bufOOBin), MSG_OOB | MSG_WAITALL) < 0)			// recv return to perror "Resource temporarily unavailable"
@@ -140,13 +149,10 @@ int startServer(char *hostName, char *port)
 			    printf("errno %d\n", errno);
 			    perror("func recv select");			    
 			  }
-			  printf("OOB data received: %d\n", bufOOBin);
-			  if(send(workSock, &bufOOBout, sizeof(bufOOBout), MSG_OOB) < 0)
-			    perror("func send select");      
-			  printf("OOB data sended: %d\n", bufOOBout);
-			  printf("%lld bytes for download left\n", (fileSize - filePointer));
+			  printf("OOB data received: %d\n", bufOOBin);			  
+			  printf("%lld bytes for send left\n", (fileSize - filePointer));
 			  
-			}          
+			}*/     
 			//printf("server_recv data\n");			
 			if(clientFirstPacket)					// if first packet from client
 										// check if file exist (filename gets from client message) 
@@ -311,8 +317,10 @@ int startClient(char *hostName, char *port, char *filePath)
 		  return -1;
 		}   								
 				
-		FD_ZERO (&temp);
-		FD_SET (listenSock,&temp);
+		//FD_ZERO (&temp);
+		//FD_SET (listenSock,&temp);
+		
+		
 		//printf("client_filePointer: %lld\n", filePointer);						
 		
 		//printf("client_send_fileSize %lld\n", fileSize);
@@ -337,7 +345,7 @@ int startClient(char *hostName, char *port, char *filePath)
 		{
 		  filePointer = ftell(file);
 		  //printf("client_send_fread %d\n", readBytes);
-		  if(select(0,NULL,&temp,NULL,&time_out))												//Проверяем, имеются ли внеполосные данные
+		  /*if(select(0,NULL,&temp,NULL,&time_out))												//Проверяем, имеются ли внеполосные данные
 		  {
 		    	  bufOOBin = 0;
 			  if(recv(workSock, &bufOOBin, sizeof(bufOOBin), MSG_OOB | MSG_WAITALL) < 0)			// recv return to perror "Resource temporarily unavailable"
@@ -346,7 +354,7 @@ int startClient(char *hostName, char *port, char *filePath)
 			    perror("func recv select");			    
 			  }
 			  printf("OOB data received: %d\n", bufOOBin);
-		  }   		
+		  }*/ 		
 		  //printf("client_select filePointer %lld\n", filePointer);
 		  if(send(listenSock, (char*)&buf, readBytes, 0) < 0)
 		  {
@@ -374,7 +382,7 @@ int main(int argc, char *argv[])
 		perror("invalid command-line arguments");
 		return -1;
 	}	
-	struct sigaction closeTerm, sendOOB, recvOOB;
+	struct sigaction closeTerm, sendOOB, recvOOB, pipeBroken;
 	closeTerm.sa_sigaction =&hdl_SIGINT;
 	closeTerm.sa_flags = SA_SIGINFO;
 	if(sigaction(SIGINT, &closeTerm, NULL) < 0)			// set handler for SIGINT signal (CTRL+C)
@@ -382,6 +390,14 @@ int main(int argc, char *argv[])
 		perror("main sigaction closeTerm");
 		return -1;
 	}	
+	pipeBroken.sa_sigaction =&hdl_SIGPIPE;
+	pipeBroken.sa_flags = SA_SIGINFO;
+	if(sigaction(SIGPIPE, &pipeBroken, NULL) < 0)			// set handler for SIGPIPE signal
+	{
+		perror("main sigaction pipeBroken");
+		return -1;
+	}
+	
 	if(!strcmp(argv[1], "server"))	
 	{
 	 /* recvOOB.sa_sigaction =&hdl_SIGURG;
