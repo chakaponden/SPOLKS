@@ -70,7 +70,8 @@ int startServer(char *hostName, char *port)
 	int 		readBytes;						// count of	
 	int 		so_reuseaddr = 1;					// for setsockop SO_REUSEADDR set enable
 	int 		clientFirstPacket;					// client first packet indicator
-	FILE*		file;							
+	FILE*		file;					
+	char 		c[64] = {0};						// for terminal input
 	char*		filePath = (char*) malloc (MAX_FILEPATH_LENGHT*sizeof(char));
 	long long 	localFileSize = 0;
     	hostAddr.sin_family = AF_INET;
@@ -165,7 +166,8 @@ int startServer(char *hostName, char *port)
 			    if(localFileSize == fileSize)
 			    {
 			      printf("Do you want to redownload %s file? Y/N\n", filePath);
-			      if(getchar() == 'Y')				// press 'Y'
+			      fgets(c, sizeof(c)*sizeof(char), stdin);		// input
+			      if(c[0] == 'Y')					// press 'Y'
 			      {
 				file = fopen(filePath, "wb");			// create file
 				filePointer = 0;					
@@ -184,7 +186,8 @@ int startServer(char *hostName, char *port)
 			    {
 			      printf("Resume downloading %lld bytes %s file? Y/N\nY = resume, N = redownload\n",
 										(fileSize-localFileSize), filePath);
-			      if(getchar() != 'Y')				// press 'N'
+			      fgets(c, sizeof(c)*sizeof(char), stdin);		// input
+			      if(c[0] == 'Y')					// press 'N'
 			      {
 				file = fopen(filePath, "wb");			// create file
 				filePointer = 0;					
