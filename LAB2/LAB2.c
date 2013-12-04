@@ -102,14 +102,16 @@ int startServer(char *hostName, char *port)
 		perror("func listen");
         	return -1;		
 	}
-	fd_set temp;
-	FD_ZERO (&temp);
-	FD_SET (workSock,&temp);	
+	fd_set temp;		
 	struct timeval time_out; time_out.tv_sec = 0; time_out.tv_usec = 0;
 	while(1)								// if any key is pressed -> exit from while loop
     	{		
 		printf("server_accept_wait_for_client\n");
 		clientFirstPacket = 1;
+		FD_ZERO (&temp);
+		FD_SET (workSock,&temp);
+		filePointer = 0;
+		fileSize = 2;
 		if(((workSock) = accept((listenSock), 0, 0)) < 0)		// wait for client
 		{
 			perror("func accept");
@@ -169,7 +171,14 @@ int startServer(char *hostName, char *port)
 				filePointer = 0;					
 			      }
 			      else						// press 'N'
-				break;		
+			      {	
+				filePointer = fileSize;				// send filePointer that point to EOF (filePointer==fileSize)
+				if(send(workSock, (char*)&filePointer, sizeof(long long), 0) < 0)										
+				{
+				  perror("func send");
+				  return -1;
+				} 						
+			      }
 			    }
 			    else
 			    {
