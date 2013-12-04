@@ -47,7 +47,7 @@ void hdl_SIGTSTP(int sig, siginfo_t *siginfo, void *context)			// handler for SI
 {
   if(sig==SIGTSTP)
   {
-    uint8_t buf = 1;
+    uint8_t buf = 5;
     if(send(listenSock, &buf, sizeof(buf), MSG_OOB) < 0)
       perror("func send SIGTSTP");      
     printf("signal SIGTSTP. OOB data sended: %d\n", buf);
@@ -62,8 +62,7 @@ void hdl_SIGURG(int sig, siginfo_t *siginfo, void *context)			// handler for OOB
     if(recv(workSock, &buf, sizeof(buf), MSG_OOB | MSG_WAITALL) < 0)			// recv return to perror "Resource temporarily unavailable"
     {
       printf("errno %d\n", errno);
-      perror("func recv SIGURG");  
-      
+      perror("func recv SIGURG");       
     }
     printf("signal SIGURG. OOB data received: %d\n", buf);
     printf("%lld bytes for download left\n", (fileSize - filePointer));
@@ -82,6 +81,7 @@ int startServer(char *hostName, char *port)
 	char 		c[64] = {0};						// for terminal input
 	char*		filePath = (char*) malloc (MAX_FILEPATH_LENGHT*sizeof(char));
 	long long 	localFileSize = 0;
+	uint8_t 	bufOOBin, bufOOBout = 2;				// OOB buffers
     	hostAddr.sin_family = AF_INET;
     	hostAddr.sin_port = htons(atoi(port));					// convert host byte order -> network byte order		
 	if(!htons(inet_aton(hostName, hostAddr.sin_addr.s_addr)))		// new func convert IPv4 char* -> IPv4 bin (+ host byte order -> network byte order too) 
@@ -127,15 +127,25 @@ int startServer(char *hostName, char *port)
 			perror("func accept");
             		return -1;    
         	}
-        	fcntl(workSock, F_SETOWN, getpid()); 				// set pid which will be recieve SIGIO and SIGURG on descriptor' events
+        	//fcntl(workSock, F_SETOWN, getpid()); 				// set pid which will be recieve SIGIO and SIGURG on descriptor' events
 		ind++;		
        		while(filePointer+1 < fileSize)							
         	{						
 			//printf("server_select %lld %lld\n", filePointer, fileSize);
-			if(select(0,NULL,NULL,&temp,&time_out) < 0)
-			{
-				puts("server timeout 10s reached");
-				break;
+			if(select(0,NULL,NULL,&temp,&time_out))
+			{	
+			  bufOOBin = 0;
+			  if(recv(workSock, &bufOOBin, sizeof(bufOOBin), MSG_OOB | MSG_WAITALL) < 0)			// recv return to perror "Resource temporarily unavailable"
+			  {												
+			    printf("errno %d\n", errno);
+			    perror("func recv select");			    
+			  }
+			  printf("OOB data received: %d\n", bufOOBin);
+			  if(send(workSock, &bufOOBout, sizeof(bufOOBout), MSG_OOB) < 0)
+			    perror("func send select");      
+			  printf("OOB data sended: %d\n", bufOOBout);
+			  printf("%lld bytes for download left\n", (fileSize - filePointer));
+			  
 			}          
 			//printf("server_recv data\n");			
 			if(clientFirstPacket)					// if first packet from client
@@ -260,6 +270,7 @@ int startClient(char *hostName, char *port, char *filePath)
 	char 		buf[BUFFER_SIZE];					// buffer for outcomming
 	int 		readBytes;						// count of	
 	int 		so_reuseaddr = 1;					// for setsockop SO_REUSEADDR set enable
+	uint8_t 	bufOOBin;
 	ind+=2;
     	hostAddr.sin_family = AF_INET;
     	hostAddr.sin_port = htons(atoi(port));					// convert host byte order -> network byte order		
@@ -326,10 +337,15 @@ int startClient(char *hostName, char *port, char *filePath)
 		{
 		  filePointer = ftell(file);
 		  //printf("client_send_fread %d\n", readBytes);
-		  if(select(0,NULL,&temp,NULL,&time_out) < 0)												//Проверяем, имеются ли внеполосные данные
+		  if(select(0,NULL,&temp,NULL,&time_out))												//Проверяем, имеются ли внеполосные данные
 		  {
-		    puts("server timeout 10s reached");
-		    break;
+		    	  bufOOBin = 0;
+			  if(recv(workSock, &bufOOBin, sizeof(bufOOBin), MSG_OOB | MSG_WAITALL) < 0)			// recv return to perror "Resource temporarily unavailable"
+			  {												
+			    printf("errno %d\n", errno);
+			    perror("func recv select");			    
+			  }
+			  printf("OOB data received: %d\n", bufOOBin);
 		  }   		
 		  //printf("client_select filePointer %lld\n", filePointer);
 		  if(send(listenSock, (char*)&buf, readBytes, 0) < 0)
@@ -368,13 +384,13 @@ int main(int argc, char *argv[])
 	}	
 	if(!strcmp(argv[1], "server"))	
 	{
-	  recvOOB.sa_sigaction =&hdl_SIGURG;
+	 /* recvOOB.sa_sigaction =&hdl_SIGURG;
 	  recvOOB.sa_flags = SA_SIGINFO;
 	  if(sigaction(SIGURG, &recvOOB, NULL) < 0)			// set handler for SIGURG signal
 	  {
 		  perror("main sigaction recvOOB");
 		  return -1;
-	  }
+	  }*/
 	  startServer(argv[2], argv[3]);	
 	}
 	if(!strcmp(argv[1], "client"))
