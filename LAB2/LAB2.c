@@ -225,7 +225,8 @@ int startServer(char *hostName, char *port)
 			}
 		}
 		printf("server_fclose\n");
-		fclose(file);		
+		if(ftell(file) => 0)						// check is file open
+		  fclose(file);		
 		printf("server_close_socket\n");
 		if(close((workSock)) < 0)					// close connection
 		{
