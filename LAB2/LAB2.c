@@ -72,7 +72,7 @@ int startServer(char *hostName, char *port)
 	int 		clientFirstPacket;					// client first packet indicator
 	FILE*		file;							
 	char*		filePath = (char*) malloc (MAX_FILEPATH_LENGHT*sizeof(char));
-
+	long long 	localFileSize = 0;
     	hostAddr.sin_family = AF_INET;
     	hostAddr.sin_port = htons(atoi(port));					// convert host byte order -> network byte order		
 	if(!htons(inet_aton(hostName, hostAddr.sin_addr.s_addr)))		// new func convert IPv4 char* -> IPv4 bin (+ host byte order -> network byte order too) 
@@ -151,21 +151,46 @@ int startServer(char *hostName, char *port)
 			  printf("server_accept_filePath %s\n",  filePath);
 			  if(access(filePath, F_OK ) < 0)
 			  {							// file not exist			    
-			    file = fopen(filePath, "w+");			// create file
+			    file = fopen(filePath, "wb");			// create file
 			    filePointer = 0;					
 			  }
 			  else			  			  				
 			  {							// file exist
-			    printf("Resume downloading %s file? Y/N\n", filePath);
-			    if(getchar() != 'Y')
-			      return -1;  
-			  }
-			 
+			    file = fopen(filePath, "rb");						// open file for read
+			    fseek(file, 0L, SEEK_END);						
+			    localFileSize = ftell(file);						// get local file size
+			    fclose(file);
+			    if(localFileSize == fileSize)
+			    {
+			      printf("Do you want to redownload %s file? Y/N\n", filePath);
+			      if(getchar() == 'Y')				// press 'Y'
+			      {
+				file = fopen(filePath, "wb");			// create file
+				filePointer = 0;					
+			      }
+			      else						// press 'N'
+				break;		
+			    }
+			    else
+			    {
+			      printf("Resume downloading %lld bytes %s file? Y/N\nY = resume, N = redownload\n",
+										(fileSize-localFileSize), filePath);
+			      if(getchar() != 'Y')				// press 'N'
+			      {
+				file = fopen(filePath, "wb");			// create file
+				filePointer = 0;					
+			      }
+			      else						// press 'Y'
+			      {
+				file = fopen(filePath, "ab");			// open file at end
+				filePointer = ftell(file);;
+			      }
+			    }			      
+			    else  
+			  }			 
 			  printf("server_recv_fileSize  filePointer %lld\n",  filePointer);
-
 			  if(!readBytes)
-				break;
-										// send num bytes already received (filePointer)
+				break;										// send num bytes already received (filePointer)
 			  if(send(workSock, (char*)&filePointer, sizeof(long long), 0) < 0)										
 			  {
 			    perror("func send");
@@ -182,8 +207,8 @@ int startServer(char *hostName, char *port)
 				  return -1;
 			  }
 			  printf("server_readbytes %d\n", readBytes);
-			  //if(!readBytes)
-			  //	  break;
+			  if(!readBytes)
+			    break;
 			  filePointer = ftell(file);	
 			  printf("server_fwrite filePointer %lld\n",  filePointer);
 			  fwrite((char*)buf, readBytes, 1, file);
@@ -220,7 +245,7 @@ int startClient(char *hostName, char *port, char *filePath)
 	hostAddr.sin_addr.s_addr = inet_addr(hostName);				// old func convert IPv4 char* -> IPv4 bin (+ host byte order -> network byte order too) 
 	puts(filePath);
 	filePath[strlen(filePath)] = '\0';
-	file = fopen(filePath, "r");						// open file for read
+	file = fopen(filePath, "rb");						// open file for read
 	fseek(file, 0L, SEEK_END);						
 	fileSize = ftell(file);							// get file size
 	fseek(file, 0L, SEEK_SET);						
@@ -256,8 +281,7 @@ int startClient(char *hostName, char *port, char *filePath)
 				
 		FD_ZERO (&temp);
 		FD_SET (listenSock,&temp);
-		printf("client_fseekFilePointer_CUR %lld\n", filePointer);
-		fseek(file, filePointer, SEEK_CUR);				
+		printf("client_filePointer: %lld\n", filePointer);						
 		
 		printf("client_send_fileSize %lld\n", fileSize);
 		if(send(listenSock, (char*)&fileSize, sizeof(long long), 0) < 0)// send fileSize
@@ -267,7 +291,7 @@ int startClient(char *hostName, char *port, char *filePath)
 		} 								
 		
 		puts("client_recv_filePointer");
-										// get filePointer from client
+										// get filePointer from server
 		if(recv(listenSock,(char*)&filePointer, sizeof(long long), 0) < 0)
 		{									      			  
 		  perror("func recv filePointer");
@@ -275,6 +299,7 @@ int startClient(char *hostName, char *port, char *filePath)
 		}		
 		
 		printf("client_recvFilePointer_fromServer %lld\n", filePointer);
+		fseek(file, filePointer, SEEK_BEG);
 		
 		while((readBytes = fread(&buf, sizeof(char), BUFFER_SIZE, file)) > 0)
 		{
@@ -296,11 +321,11 @@ int startClient(char *hostName, char *port, char *filePath)
 		puts("client_close_socket");
 		if(close(listenSock) < 0)			
 		  perror("sgn close listenSock");
+		ind-=2;
 		puts("client_file_close");
-		fclose(file);		
-		
+		fclose(file);	
+		return 0;		
 	}
-  return 0;
 }			
 
 int main(int argc, char *argv[])
@@ -345,7 +370,7 @@ int main(int argc, char *argv[])
 		  perror("main sigaction sendOOB");
 		  return -1;
 	  }
-	  startClient(argv[2], argv[3], argv[4]);
+	  startClient(argv[2], argv[3], argv[4]);return 0;
 	}
 	if(ind > 1)
 	{
