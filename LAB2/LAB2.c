@@ -135,10 +135,10 @@ int startServer(char *hostName, char *port)
             		return -1;    
         	}
         	fcntl(workSock, F_SETOWN, getpid()); 				// set pid which will be recieve SIGIO and SIGURG on descriptor' events
-        	//FD_ZERO (&temp);
-		//FD_SET (workSock,&temp);        	
+        	FD_ZERO (&temp);
+		FD_SET (workSock,&temp);        	
 		ind++;		
-       		while(filePointer < fileSize)							
+       		while(filePointer+1 < fileSize)							
         	{						
 			//printf("server_select %lld %lld\n", filePointer, fileSize);
 			/*if(select(0,NULL,NULL,&temp,&time_out) == 1)
@@ -171,9 +171,9 @@ int startServer(char *hostName, char *port)
 			    perror("func recv");
 			    return -1;
 			  }
-			  printf("server_recv fileSize %lld\n",  fileSize);
-			  //if(!readBytes)
-			  //	  break;
+			  //printf("server_recv fileSize %lld\n",  fileSize);
+			  if(!readBytes)
+				  break;
 			  //printf("server_first_realloc\n"); 
 			 
 			  filePath[readBytes] = '\0';
@@ -216,7 +216,9 @@ int startServer(char *hostName, char *port)
 			      if(c[0] == 'Y')					// press 'Y'
 			      {
 				file = fopen(filePath, "ab");			// open file at end
-				filePointer = localFileSize-1;					
+				printf("server filePointer FTELL: %ld;\n LOCAL: %lld \n",  ftell(file),  (localFileSize-1));
+				//filePointer = ftell(file); ////////////////////////////////////////////////	
+				filePointer = localFileSize-1;
 			      }
 			      else						// press 'N'
 			      {
@@ -225,15 +227,15 @@ int startServer(char *hostName, char *port)
 			      }
 			    }	
 			  }			 
-			  printf("server_recv_fileSize  filePointer %lld\n",  filePointer);
-			  //if(!readBytes)
-			  //	break;						// send num bytes already received (filePointer)
+			  //printf("server_recv_fileSize  filePointer %lld\n",  filePointer);
+			  if(!readBytes)
+				break;						// send num bytes already received (filePointer)
 			  if(send(workSock, (char*)&filePointer, sizeof(long long), 0) < 0)										
 			  {
 			    perror("func send");
-			    return -1;
+			    //return -1;
 			  } 
-			   printf("server_send num bytes: %d, mess: %lld\n",  readBytes, filePointer);
+			   //printf("server_send num bytes: %d, mess: %lld\n",  readBytes, filePointer);
 			}			
 			else
 			{
@@ -242,15 +244,18 @@ int startServer(char *hostName, char *port)
 			  {
 				  perror("func recv data");
 				  printf("errno data %d\n", errno);
-				  return -1;
+				  //return -1;
 			  }
-			  printf("server_readbytes %d\n", readBytes);
+			  //printf("server_readbytes %d\n", readBytes);
 			  //if(!readBytes)
-			  //  break;
-			  filePointer += readBytes;	
-			  printf("server_fwrite filePointer %lld\n",  filePointer);
-			  fwrite((char*)buf, readBytes, 1, file);			  
-			  printf("server_fwrite2 filePointer2 %lld\n",  filePointer);
+			  //  break;			  	
+			  
+			  //printf("server_fwrite filePointer %lld\n",  filePointer);
+			  fwrite((char*)buf, readBytes, 1, file);
+			  //filePointer = ftell(file);
+			  filePointer += readBytes;
+			  printf("server filePointer FTELL: %ld;\n READBYTES: %lld \n",  ftell(file),  (filePointer+readBytes));
+			  //printf("server_fwrite2 filePointer2 %lld\n",  filePointer);
 			}
 		}
 		//printf("server_fclose\n");
@@ -260,7 +265,7 @@ int startServer(char *hostName, char *port)
 		if(close((workSock)) < 0)					// close connection
 		{
 			perror("func close workSock");
-			return -1;
+			//return -1;
 		}	
 		ind--;
 		printf("-\n");	  
@@ -280,7 +285,7 @@ int startClient(char *hostName, char *port, char *filePath)
     	hostAddr.sin_family = AF_INET;
     	hostAddr.sin_port = htons(atoi(port));					// convert host byte order -> network byte order		
 	hostAddr.sin_addr.s_addr = inet_addr(hostName);				// old func convert IPv4 char* -> IPv4 bin (+ host byte order -> network byte order too) 
-	//puts(filePath);
+	puts(filePath);
 	filePath[strlen(filePath)] = '\0';
 	file = fopen(filePath, "rb");						// open file for read
 	fseek(file, 0L, SEEK_END);						
@@ -320,16 +325,16 @@ int startClient(char *hostName, char *port, char *filePath)
 		//FD_SET (listenSock,&temp);
 		
 		
-		printf("client_filePointer: %lld\n", filePointer);						
+		//printf("client_filePointer: %lld\n", filePointer);						
 		
-		printf("client_send_fileSize %lld\n", fileSize);
+		//printf("client_send_fileSize %lld\n", fileSize);
 		if(send(listenSock, (char*)&fileSize, sizeof(long long), 0) < 0)// send fileSize
 		{
 		  perror("func send fileSize");
 		  return -1;
 		} 								
 		
-		puts("client_recv_filePointer");
+		//puts("client_recv_filePointer");
 										// get filePointer from server
 		if(recv(listenSock,(char*)&filePointer, sizeof(long long), 0) < 0)
 		{									      			  
@@ -337,14 +342,13 @@ int startClient(char *hostName, char *port, char *filePath)
 		  return -1;
 		}		
 		
-		printf("client_recvFilePointer_fromServer %lld\n", filePointer);
+		//printf("client_recvFilePointer_fromServer %lld\n", filePointer);
 		fseek(file, filePointer, SEEK_SET);
 		
-		while(filePointer < fileSize)
+		while((readBytes = fread(&buf, sizeof(char), BUFFER_SIZE, file)) > 0)
 		{
-		  readBytes = fread(&buf, sizeof(char), BUFFER_SIZE, file);
 		  filePointer = ftell(file);
-		  printf("client_send_fread %d\n", readBytes);
+		  //printf("client_send_fread %d\n", readBytes);
 		  /*if(select(0,NULL,&temp,NULL,&time_out))												//Проверяем, имеются ли внеполосные данные
 		  {
 		    	  bufOOBin = 0;
@@ -355,7 +359,7 @@ int startClient(char *hostName, char *port, char *filePath)
 			  }
 			  printf("OOB data received: %d\n", bufOOBin);
 		  }*/ 		
-		  printf("client_select filePointer %lld\n", filePointer);
+		  //printf("client_select filePointer %lld\n", filePointer);
 		  if(send(listenSock, (char*)&buf, readBytes, 0) < 0)
 		  {
 		    perror("func send fileFragment");
