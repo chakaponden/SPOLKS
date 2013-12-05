@@ -56,7 +56,7 @@ void hdl_SIGTSTP(int sig, siginfo_t *siginfo, void *context)			// handler for SI
     uint8_t buf = 5;
     if(send(listenSock, &buf, sizeof(buf), MSG_OOB) < 0)
     {
-      printf("errno %d\n", errno);
+      printf("errno: %d\n", errno);
       perror("func send SIGTSTP");      
     }
     printf("signal SIGTSTP. OOB data sended: %d\n", buf);
@@ -68,9 +68,9 @@ void hdl_SIGURG(int sig, siginfo_t *siginfo, void *context)			// handler for OOB
   if(sig==SIGURG)
   {
     uint8_t buf = 0;
-    if(recv(workSock, &buf, sizeof(buf), MSG_OOB | MSG_WAITALL) < 0)		// recv return to perror "Resource temporarily unavailable"
+    if(recv(workSock, &buf, sizeof(buf), MSG_OOB) < 0)				// recv return to perror "Resource temporarily unavailable"
     {
-      printf("errno %d\n", errno);
+      printf("errno: %d\n", errno);
       perror("func recv SIGURG");       
     }
     printf("signal SIGURG. OOB data received: %d\n", buf);
@@ -120,8 +120,8 @@ int startServer(char *hostName, char *port)
 		perror("func listen");
         	return -1;		
 	}
-	fd_set temp;		
-	struct timeval time_out; time_out.tv_sec = 0; time_out.tv_usec = 0;
+	//fd_set temp;		
+	//struct timeval time_out; time_out.tv_sec = 0; time_out.tv_usec = 0;
 	
 	while(1)								// if any key is pressed -> exit from while loop
     	{		
@@ -135,8 +135,8 @@ int startServer(char *hostName, char *port)
             		return -1;    
         	}
         	fcntl(workSock, F_SETOWN, getpid()); 				// set pid which will be recieve SIGIO and SIGURG on descriptor' events
-        	FD_ZERO (&temp);
-		FD_SET (workSock,&temp);        	
+        	//FD_ZERO (&temp);
+		//FD_SET (workSock,&temp);        	
 		ind++;		
        		while(filePointer < fileSize)							
         	{						
@@ -228,13 +228,17 @@ int startServer(char *hostName, char *port)
 			    }	
 			  }			 
 			  //printf("server_recv_fileSize  filePointer %lld\n",  filePointer);
-			  if(!readBytes)
-				break;						
+			  //if(!readBytes)
+			  //	break;						// send num bytes already received (filePointer)
+			  if(send(workSock, (char*)&filePointer, sizeof(long long), 0) < 0)										
+			  {
+			    perror("func send");
+			    return -1;
+			  } 
 			   //printf("server_send num bytes: %d, mess: %lld\n",  readBytes, filePointer);
 			}			
 			else
 			{
-			  printf("server_recv data\n");
 			  if((readBytes = recv(workSock, (char*)&buf, BUFFER_SIZE, 0)) < 0)
 										  // receive data from client
 			  {
@@ -243,7 +247,6 @@ int startServer(char *hostName, char *port)
 				  if(errno != 11 && errno != 4)
 				    return -1;
 			  }
-			  
 			  //printf("server_readbytes %d\n", readBytes);
 			  //if(!readBytes)
 			  //  break;			  	
@@ -252,17 +255,9 @@ int startServer(char *hostName, char *port)
 			  fwrite((char*)buf, readBytes, 1, file);
 			  //filePointer = ftell(file);
 			  filePointer += readBytes;
-			  //printf("server filePointer FTELL: %ld;\n READBYTES: %lld \n",  ftell(file),  (filePointer+readBytes));
+			  //printf("server filePointer FTELL: %ld;\n READBYTES: %lld \n",  ftell(file),  filePointer);
 			  //printf("server_fwrite2 filePointer2 %lld\n",  filePointer);
-			  printf("server_readbytes %d\n", readBytes);
-			}										  // send num bytes already received (filePointer)
-			printf("server_send filePointer %lld\n", filePointer);
-			if(send(workSock, (char*)&filePointer, sizeof(long long), 0) < 0)										
-			{
-			  perror("func send");
-			  if(errno !=11 && errno !=4)
-			    return -1;
-			} 
+			}
 		}
 		//printf("server_fclose\n");
 		if(ftell(file) >= 0)						// check is file open
@@ -271,10 +266,10 @@ int startServer(char *hostName, char *port)
 		if(close((workSock)) < 0)					// close connection
 		{
 			perror("func close workSock");
-			//return -1;
+			return -1;
 		}	
 		ind--;
-		printf("-\n");	  
+		//printf("-\n");	  
 	}
 	return 0;	
 }
@@ -296,12 +291,11 @@ int startClient(char *hostName, char *port, char *filePath)
 	file = fopen(filePath, "rb");						// open file for read
 	fseek(file, 0L, SEEK_END);						
 	fileSize = ftell(file);							// get file size
-						
+	fseek(file, 0L, SEEK_SET);						
 	fd_set temp;		
 	struct timeval time_out; time_out.tv_sec = 0; time_out.tv_usec = 0;
 	while(1)								// if any key is pressed -> exit from while loop
     	{		
-		fseek(file, 0L, SEEK_SET);	
 		if(((listenSock) = socket(AF_INET, SOCK_STREAM, 0)) < 0)		
 		{
 			perror("func socket");
@@ -340,16 +334,21 @@ int startClient(char *hostName, char *port, char *filePath)
 		  perror("func send fileSize");
 		  return -1;
 		} 								
+		
+		//puts("client_recv_filePointer");
+										// get filePointer from server
 		if(recv(listenSock,(char*)&filePointer, sizeof(long long), 0) < 0)
 		{									      			  
 		  perror("func recv filePointer");
 		  return -1;
-		}
+		}		
+		
+		//printf("client_recvFilePointer_fromServer %lld\n", filePointer);
 		fseek(file, filePointer, SEEK_SET);
-		//puts("client_recv_filePointer");		
+		
 		while((readBytes = fread(&buf, sizeof(char), BUFFER_SIZE, file)) > 0)
-		{	
-		  //printf("client_recvFilePointer_fromServer %lld\n", filePointer);		  
+		{
+		  filePointer = ftell(file);
 		  //printf("client_send_fread %d\n", readBytes);
 		  /*if(select(0,NULL,&temp,NULL,&time_out))												//Проверяем, имеются ли внеполосные данные
 		  {
@@ -357,27 +356,19 @@ int startClient(char *hostName, char *port, char *filePath)
 			  if(recv(workSock, &bufOOBin, sizeof(bufOOBin), MSG_OOB | MSG_WAITALL) < 0)			// recv return to perror "Resource temporarily unavailable"
 			  {												
 			    printf("errno %d\n", errno);
-			    perror("func recv select")while;			    
+			    perror("func recv select");			    
 			  }
 			  printf("OOB data received: %d\n", bufOOBin);
 		  }*/ 		
 		  //printf("client_select filePointer %lld\n", filePointer);
-		  printf("client_send_fread %d\n", readBytes);
 		  if(send(listenSock, (char*)&buf, readBytes, 0) < 0)
 		  {
 		    perror("func send fileFragment");
-		    if(errno !=11 && errno !=4)
+		    printf("errno: %d", errno);
+		    if(errno != 11 && errno != 4)
 		      return -1;
+		    
 		  }  
-		  printf("client_recv filePointerOLD %lld\n", filePointer);
-		  if(recv(listenSock,(char*)&filePointer, sizeof(long long), 0) < 0)
-		  {									      			  
-		    perror("func recv filePointer");
-		    if(errno !=11 && errno !=4)
-		      return -1;
-		  }
-		  printf("client_recv filePointerNEW %lld\n", filePointer);
-		  fseek(file, filePointer, SEEK_SET);
 		  //puts("client_send_fieFragment");
 		}
 		//puts("client_close_socket");
