@@ -138,7 +138,7 @@ int startServer(char *hostName, char *port)
         	FD_ZERO (&temp);
 		FD_SET (workSock,&temp);        	
 		ind++;		
-       		while(filePointer+1 < fileSize)							
+       		while(filePointer < fileSize)							
         	{						
 			//printf("server_select %lld %lld\n", filePointer, fileSize);
 			/*if(select(0,NULL,NULL,&temp,&time_out) == 1)
@@ -229,12 +229,7 @@ int startServer(char *hostName, char *port)
 			  }			 
 			  //printf("server_recv_fileSize  filePointer %lld\n",  filePointer);
 			  if(!readBytes)
-				break;						// send num bytes already received (filePointer)
-			  if(send(workSock, (char*)&filePointer, sizeof(long long), 0) < 0)										
-			  {
-			    perror("func send");
-			    //return -1;
-			  } 
+				break;						
 			   //printf("server_send num bytes: %d, mess: %lld\n",  readBytes, filePointer);
 			}			
 			else
@@ -244,7 +239,8 @@ int startServer(char *hostName, char *port)
 			  {
 				  perror("func recv data");
 				  printf("errno data %d\n", errno);
-				  //return -1;
+				  if(errno != 11 && errno != 4)
+				    return -1;
 			  }
 			  //printf("server_readbytes %d\n", readBytes);
 			  //if(!readBytes)
@@ -254,9 +250,14 @@ int startServer(char *hostName, char *port)
 			  fwrite((char*)buf, readBytes, 1, file);
 			  //filePointer = ftell(file);
 			  filePointer += readBytes;
-			  printf("server filePointer FTELL: %ld;\n READBYTES: %lld \n",  ftell(file),  (filePointer+readBytes));
+			  //printf("server filePointer FTELL: %ld;\n READBYTES: %lld \n",  ftell(file),  (filePointer+readBytes));
 			  //printf("server_fwrite2 filePointer2 %lld\n",  filePointer);
-			}
+			}										  // send num bytes already received (filePointer)
+			if(send(workSock, (char*)&filePointer, sizeof(long long), 0) < 0)										
+			{
+			  perror("func send");
+			  return -1;
+			} 
 		}
 		//printf("server_fclose\n");
 		if(ftell(file) >= 0)						// check is file open
@@ -290,11 +291,12 @@ int startClient(char *hostName, char *port, char *filePath)
 	file = fopen(filePath, "rb");						// open file for read
 	fseek(file, 0L, SEEK_END);						
 	fileSize = ftell(file);							// get file size
-	fseek(file, 0L, SEEK_SET);						
+						
 	fd_set temp;		
 	struct timeval time_out; time_out.tv_sec = 0; time_out.tv_usec = 0;
 	while(1)								// if any key is pressed -> exit from while loop
     	{		
+		fseek(file, 0L, SEEK_SET);	
 		if(((listenSock) = socket(AF_INET, SOCK_STREAM, 0)) < 0)		
 		{
 			perror("func socket");
@@ -333,21 +335,16 @@ int startClient(char *hostName, char *port, char *filePath)
 		  perror("func send fileSize");
 		  return -1;
 		} 								
-		
-		//puts("client_recv_filePointer");
-										// get filePointer from server
 		if(recv(listenSock,(char*)&filePointer, sizeof(long long), 0) < 0)
 		{									      			  
 		  perror("func recv filePointer");
 		  return -1;
-		}		
-		
-		//printf("client_recvFilePointer_fromServer %lld\n", filePointer);
+		}
 		fseek(file, filePointer, SEEK_SET);
-		
+		//puts("client_recv_filePointer");		
 		while((readBytes = fread(&buf, sizeof(char), BUFFER_SIZE, file)) > 0)
-		{
-		  filePointer = ftell(file);
+		{	
+		  //printf("client_recvFilePointer_fromServer %lld\n", filePointer);		  
 		  //printf("client_send_fread %d\n", readBytes);
 		  /*if(select(0,NULL,&temp,NULL,&time_out))												//Проверяем, имеются ли внеполосные данные
 		  {
@@ -355,7 +352,7 @@ int startClient(char *hostName, char *port, char *filePath)
 			  if(recv(workSock, &bufOOBin, sizeof(bufOOBin), MSG_OOB | MSG_WAITALL) < 0)			// recv return to perror "Resource temporarily unavailable"
 			  {												
 			    printf("errno %d\n", errno);
-			    perror("func recv select");			    
+			    perror("func recv select")while;			    
 			  }
 			  printf("OOB data received: %d\n", bufOOBin);
 		  }*/ 		
@@ -365,6 +362,12 @@ int startClient(char *hostName, char *port, char *filePath)
 		    perror("func send fileFragment");
 		    return -1;
 		  }  
+		  if(recv(listenSock,(char*)&filePointer, sizeof(long long), 0) < 0)
+		  {									      			  
+		    perror("func recv filePointer");
+		    return -1;
+		  }
+		  fseek(file, filePointer, SEEK_SET);
 		  //puts("client_send_fieFragment");
 		}
 		//puts("client_close_socket");
