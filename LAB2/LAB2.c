@@ -216,7 +216,7 @@ int startServer(char *hostName, char *port)
 			      if(c[0] == 'Y')					// press 'Y'
 			      {
 				file = fopen(filePath, "ab");			// open file at end
-				//printf("server filePointer FTELL: %ld;\n LOCAL: %lld \n",  ftell(file),  localFileSize);
+				//printf("server filePointer FTELL: %ld;\n LOCAL: %lld \n",  ftell(file),  (localFileSize-1));
 				//filePointer = ftell(file); ////////////////////////////////////////////////	
 				filePointer = localFileSize;
 			      }
@@ -286,7 +286,7 @@ int startClient(char *hostName, char *port, char *filePath)
     	hostAddr.sin_family = AF_INET;
     	hostAddr.sin_port = htons(atoi(port));					// convert host byte order -> network byte order		
 	hostAddr.sin_addr.s_addr = inet_addr(hostName);				// old func convert IPv4 char* -> IPv4 bin (+ host byte order -> network byte order too) 
-	//puts(filePath);
+	
 	filePath[strlen(filePath)] = '\0';
 	file = fopen(filePath, "rb");						// open file for read
 	fseek(file, 0L, SEEK_END);						
