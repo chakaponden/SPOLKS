@@ -216,7 +216,7 @@ int startServer(char *hostName, char *port)
 			      if(c[0] == 'Y')					// press 'Y'
 			      {
 				file = fopen(filePath, "ab");			// open file at end
-				//printf("server filePointer FTELL: %ld;\n LOCAL: %lld \n",  ftell(file),  (localFileSize-1));
+				printf("server filePointer FTELL: %ld;\n LOCAL: %lld \n",  ftell(file),  (localFileSize-1));
 				//filePointer = ftell(file); ////////////////////////////////////////////////	
 				filePointer = localFileSize;
 			      }
