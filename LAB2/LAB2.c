@@ -234,6 +234,7 @@ int startServer(char *hostName, char *port)
 			}			
 			else
 			{
+			  printf("server_recv data\n");
 			  if((readBytes = recv(workSock, (char*)&buf, BUFFER_SIZE, 0)) < 0)
 										  // receive data from client
 			  {
@@ -242,6 +243,7 @@ int startServer(char *hostName, char *port)
 				  if(errno != 11 && errno != 4)
 				    return -1;
 			  }
+			  
 			  //printf("server_readbytes %d\n", readBytes);
 			  //if(!readBytes)
 			  //  break;			  	
@@ -252,11 +254,14 @@ int startServer(char *hostName, char *port)
 			  filePointer += readBytes;
 			  //printf("server filePointer FTELL: %ld;\n READBYTES: %lld \n",  ftell(file),  (filePointer+readBytes));
 			  //printf("server_fwrite2 filePointer2 %lld\n",  filePointer);
+			  printf("server_readbytes %d\n", readBytes);
 			}										  // send num bytes already received (filePointer)
+			printf("server_send filePointer %lld\n", filePointer);
 			if(send(workSock, (char*)&filePointer, sizeof(long long), 0) < 0)										
 			{
 			  perror("func send");
-			  return -1;
+			  if(errno !=11 && errno !=4)
+			    return -1;
 			} 
 		}
 		//printf("server_fclose\n");
@@ -357,16 +362,21 @@ int startClient(char *hostName, char *port, char *filePath)
 			  printf("OOB data received: %d\n", bufOOBin);
 		  }*/ 		
 		  //printf("client_select filePointer %lld\n", filePointer);
+		  printf("client_send_fread %d\n", readBytes);
 		  if(send(listenSock, (char*)&buf, readBytes, 0) < 0)
 		  {
 		    perror("func send fileFragment");
-		    return -1;
+		    if(errno !=11 && errno !=4)
+		      return -1;
 		  }  
+		  printf("client_recv filePointerOLD %lld\n", filePointer);
 		  if(recv(listenSock,(char*)&filePointer, sizeof(long long), 0) < 0)
 		  {									      			  
 		    perror("func recv filePointer");
-		    return -1;
+		    if(errno !=11 && errno !=4)
+		      return -1;
 		  }
+		  printf("client_recv filePointerNEW %lld\n", filePointer);
 		  fseek(file, filePointer, SEEK_SET);
 		  //puts("client_send_fieFragment");
 		}
