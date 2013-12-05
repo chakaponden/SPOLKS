@@ -216,9 +216,9 @@ int startServer(char *hostName, char *port)
 			      if(c[0] == 'Y')					// press 'Y'
 			      {
 				file = fopen(filePath, "ab");			// open file at end
-				printf("server filePointer FTELL: %ld;\n LOCAL: %lld \n",  ftell(file),  (localFileSize-1));
+				//printf("server filePointer FTELL: %ld;\n LOCAL: %lld \n",  ftell(file),  localFileSize);
 				//filePointer = ftell(file); ////////////////////////////////////////////////	
-				filePointer = localFileSize-1;
+				filePointer = localFileSize;
 			      }
 			      else						// press 'N'
 			      {
@@ -286,7 +286,7 @@ int startClient(char *hostName, char *port, char *filePath)
     	hostAddr.sin_family = AF_INET;
     	hostAddr.sin_port = htons(atoi(port));					// convert host byte order -> network byte order		
 	hostAddr.sin_addr.s_addr = inet_addr(hostName);				// old func convert IPv4 char* -> IPv4 bin (+ host byte order -> network byte order too) 
-	puts(filePath);
+	//puts(filePath);
 	filePath[strlen(filePath)] = '\0';
 	file = fopen(filePath, "rb");						// open file for read
 	fseek(file, 0L, SEEK_END);						
@@ -364,7 +364,7 @@ int startClient(char *hostName, char *port, char *filePath)
 		  if(send(listenSock, (char*)&buf, readBytes, 0) < 0)
 		  {
 		    perror("func send fileFragment");
-		    printf("errno: %d", errno);
+		    printf("errno: %d\n", errno);
 		    if(errno != 11 && errno != 4)
 		      return -1;
 		    
