@@ -81,7 +81,8 @@ int startServerTcp(char *hostName, char *port)
     	int		childPid, status, retChild;   				// parameters for child process
     	int 		otherClient = 0;					// if other client already send this file
     	char		filePath[MAX_FILEPATH_LENGHT];
-	int 		i;							// for loops
+	int 		i = 2;							// for loops
+	int 		highDescSocket;						// for select
 	for(i = 0; i < MAX_PENDING; i++)					// initial
 	  clientVect[i].pid = -1;	
 	hostAddr.sin_family = AF_INET;
@@ -115,106 +116,115 @@ int startServerTcp(char *hostName, char *port)
         	return -1;		
 	}
 	fcntl(listenSock, F_SETFL, O_NONBLOCK);					// set socket to NON_BLOCKING
-	fd_set temp;		
+	fd_set tempSet, workSet;		
 	struct timeval time_out; time_out.tv_sec = 0; time_out.tv_usec = 10000;	// timeout
 	clientAddrLen = sizeof(clientAddr);
+	highDescSocket = listenSock;						// set high socket descriptor for select func
+	FD_ZERO (&workSet);
+	FD_SET (listenSock,&workSet);
+	tempSet = workSet;
 	while(1)								
     	{
 	  if(nClients < MAX_PENDING)
-	  {
-		//printf("server_accept_wait_for_client\n");
-		if(((workSock) = accept((listenSock), 
-		  (struct sockaddr*)&clientAddr, &clientAddrLen)) < 0)		// wait for client		
-		{	
-			if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
-			{
-			  fprintf(stderr, "accept errno: %d\n", errno);		// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
-										// (no available connections on NON_BLOCKING socket)
-			  return -1;    					//./a.out tcp 192.168.1.2 55555 1.mp4 errno == 4 means EINTR == Interrupted system call
-			}
-        	}
-        	//printf("server_worksock: %d, nClients: %d\n", workSock, nClients);
-        	if(workSock >= 0)
+	  {	    
+	    tempSet = workSet;
+		if(select(highDescSocket+1,&tempSet,NULL,NULL,&time_out) == 1)	// wait for incomming connections
 		{
-		  /*
-		  FD_ZERO (&temp);
-		  FD_SET (workSock,&temp);		  
-		  if(select(0,NULL,NULL,&temp,&time_out) != 1)	// timeout
-		    break;    
-		  */
-		  while(recv((workSock), (char*)&filePath, MAX_FILEPATH_LENGHT*sizeof(char), MSG_WAITALL) < MAX_FILEPATH_LENGHT*sizeof(char))
-								// receive filePath from client
-		  {
-		      fprintf(stderr, "recv filePath errno: %d\n", errno);
-								// errno == 4 means EINTR == Interrupted system call 
-		      if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)			
-			return -1;				// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+		  
+		  //printf("server_accept_wait_for_client\n");
+		  if(((workSock) = accept((listenSock), 
+		    (struct sockaddr*)&clientAddr, &clientAddrLen)) < 0)		// wait for client		
+		  {	
+			  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
+			  {
+			    fprintf(stderr, "accept errno: %d\n", errno);		// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+										  // (no available connections on NON_BLOCKING socket)
+			    return -1;    					//./a.out tcp 192.168.1.2 55555 1.mp4 errno == 4 means EINTR == Interrupted system call
+			  }
 		  }
-		  /*
-		  if(select(0,NULL,NULL,&temp,&time_out) != 1)	// timeout
-		    break;
-		  */
-		  while(recv((workSock), (char*)&fileSize, sizeof(long long), MSG_WAITALL) < sizeof(long long))
-								// receive fileSize from client
+		  //printf("server_worksock: %d, nClients: %d\n", workSock, nClients);
+		  if(workSock >= 0)
 		  {
-		    fprintf(stderr, "recv fileSize errno: %d\n", errno);
-		    if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)			// errno == 4 means EINTR == Interrupted system call 
-			    return -1;					// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
-		  }
-		  for(i = 0; i < MAX_PENDING; i++)			// check if file is already downloading from other client
-		  {
-		    if(clientVect[i].pid != -1)
+		    /*
+		    FD_ZERO (&temp);
+		    FD_SET (workSock,&temp);		  
+		    if(select(0,NULL,NULL,&temp,&time_out) != 1)	// timeout
+		      break;    
+		    */
+		    while(recv((workSock), (char*)&filePath, MAX_FILEPATH_LENGHT*sizeof(char), MSG_WAITALL) < MAX_FILEPATH_LENGHT*sizeof(char))
+								  // receive filePath from client
 		    {
-		      if(!strcmp(clientVect[i].filePath, filePath))
-		      {
-			otherClient = 1;
-			break;
-		      }
-		    }		      
-		  }
-		  if(otherClient)						// then send filePointer that point to EOF (filePointer==fileSize)
-		  {						
-		    while(send(workSock, (char*)&fileSize, sizeof(long long), 0) < sizeof(long long))										
+			fprintf(stderr, "recv filePath errno: %d\n", errno);
+								  // errno == 4 means EINTR == Interrupted system call 
+			if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)			
+			  return -1;				// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+		    }
+		    /*
+		    if(select(0,NULL,NULL,&temp,&time_out) != 1)	// timeout
+		      break;
+		    */
+		    while(recv((workSock), (char*)&fileSize, sizeof(long long), MSG_WAITALL) < sizeof(long long))
+								  // receive fileSize from client
 		    {
-		      fprintf(stderr, "send fileSize errno: %d\n", errno);
-									  // errno == 4 means EINTR == Interrupted system call 
-		      if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
+		      fprintf(stderr, "recv fileSize errno: %d\n", errno);
+		      if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)			// errno == 4 means EINTR == Interrupted system call 
 			      return -1;					// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
-		    } 
-		    otherClient = 0;
-		  }
-		  else
-		  {    
-		    switch((childPid = fork()))
+		    }
+		    for(i = 0; i < MAX_PENDING; i++)			// check if file is already downloading from other client
 		    {
-			    case -1: 						// error fork
-				    {
-					    perror("fork");
-					    return -1;				
-				    }	
-			    case 0 : 						// child process
-				    {			
-					    status = serverProcessingTcp(workSock, &filePath, fileSize);					  
-					    return status;	
-				    }			
-			    default :						// parent process
-				    {		
-					    for(i = 0; i < MAX_PENDING; i++)				// check if file is already downloading from other client
-					    {
-					      if(clientVect[i].pid == -1)
+		      if(clientVect[i].pid != -1)
+		      {
+			if(!strcmp(clientVect[i].filePath, filePath))
+			{
+			  otherClient = 1;
+			  break;
+			}
+		      }		      
+		    }
+		    if(otherClient)						// then send filePointer that point to EOF (filePointer==fileSize)
+		    {						
+		      while(send(workSock, (char*)&fileSize, sizeof(long long), 0) < sizeof(long long))										
+		      {
+			fprintf(stderr, "send fileSize errno: %d\n", errno);
+									    // errno == 4 means EINTR == Interrupted system call 
+			if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
+				return -1;					// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+		      } 
+		      otherClient = 0;
+		    }
+		    else
+		    {    
+		      switch((childPid = fork()))
+		      {
+			      case -1: 						// error fork
+				      {
+					      perror("fork");
+					      return -1;				
+				      }	
+			      case 0 : 						// child process
+				      {			
+					      status = serverProcessingTcp(workSock, &filePath, fileSize);					  
+					      return status;	
+				      }			
+			      default :						// parent process
+				      {		
+					      for(i = 0; i < MAX_PENDING; i++)				// check if file is already downloading from other client
 					      {
-						strcpy((clientVect[i].filePath), filePath);		// add filePath to clientVect
-						clientVect[i].addr = clientAddr.sin_addr;		// add client's sin_addr
-						clientVect[i].pid = childPid;				// add pid
-						break;
-					      }		      
-					    }
-					    nClients++;
-					    break;				
-				    }
-		    }       
+						if(clientVect[i].pid == -1)
+						{
+						  strcpy((clientVect[i].filePath), filePath);		// add filePath to clientVect
+						  clientVect[i].addr = clientAddr.sin_addr;		// add client's sin_addr
+						  clientVect[i].pid = childPid;				// add pid
+						  break;
+						}		      
+					      }
+					      nClients++;
+					      break;				
+				      }
+		      }       
+		    }
 		  }
-		}
+	    }
 	  }
 		if(nClients)						// if any child proc exists
 		{

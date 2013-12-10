@@ -42,6 +42,7 @@ void hdl_SIGINT(int sig, siginfo_t *siginfo, void *context)			// handler for SIG
 	    perror("func shutdown listenSock signal");
 	  if(close(listenSock) < 0)			
 		  perror("sgn close listenSock signal");
+	  ind--;
 	}	
 	if(ftell(file) >= 0)							// check is file open
 		  fclose(file);
