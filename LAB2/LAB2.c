@@ -70,7 +70,7 @@ int startServer(char *hostName, char *port)
 	int 		so_reuseaddr = 1;					// for setsockop SO_REUSEADDR set enable
 	int 		clientFirstPacket;					// client first packet indicator					
 	char 		c[64] = {0};						// for terminal input
-	char*		filePath = (char*) malloc (MAX_FILEPATH_LENGHT*sizeof(char));
+	char		filePath[MAX_FILEPATH_LENGHT];
 	long long 	localFileSize = 0;
 	uint8_t 	bufOOBin;
     	hostAddr.sin_family = AF_INET;
@@ -148,7 +148,7 @@ int startServer(char *hostName, char *port)
 										// check if file exist (filename gets from client message) 
 			{		
 			  clientFirstPacket = 0;
-			  while((readBytes = recv((workSock), (char*)filePath, MAX_FILEPATH_LENGHT*sizeof(char), 0)) < 0)
+			  while((readBytes = recv((workSock), (char*)&filePath, MAX_FILEPATH_LENGHT*sizeof(char), 0)) < 0)
 										// receive filePath from client
 			  {
 				  perror("func recv");				// errno == 4 means EINTR == Interrupted system call 
