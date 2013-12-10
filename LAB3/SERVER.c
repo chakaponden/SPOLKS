@@ -17,6 +17,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <poll.h>
 
 
 #define	MAX_PENDING		16				// max pending client connections
@@ -82,7 +83,7 @@ int startServerTcp(char *hostName, char *port)
     	int 		otherClient = 0;			// if other client already send this file
     	char		filePath[MAX_FILEPATH_LENGHT];
 	int 		i = 2;					// for loops
-	int 		highDescSocket;				// for select
+	int 		highDescSocket, retVal = 0;		// for select/poll
 	for(i = 0; i < MAX_PENDING; i++)			// initial vector of connected clients
 	  clientVect[i].pid = -1;	
 	hostAddr.sin_family = AF_INET;
@@ -117,22 +118,54 @@ int startServerTcp(char *hostName, char *port)
         	return -1;		
 	}
 	fcntl(listenSock, F_SETFL, O_NONBLOCK);			// set socket to NON_BLOCKING
+	/*
 	fd_set tempSet, workSet;		
-	struct timeval time_out; time_out.tv_sec = 0; time_out.tv_usec = 10000;	
-								// timeout
-	clientAddrLen = sizeof(clientAddr);
+	struct timeval time_out;				// timeout
+								
+	
 	highDescSocket = listenSock;				// set high socket descriptor for select func
 	FD_ZERO (&workSet);
 	FD_SET (listenSock,&workSet);
 	tempSet = workSet;
+	*/
+	struct pollfd tempSet;
+	int time_out = 40;					// 40 milisec
+	tempSet.fd = listenSock;
+	tempSet.events = POLLIN;
+	highDescSocket = 1;
+	clientAddrLen = sizeof(clientAddr);
 	while(1)								
     	{
 	  if(nClients < MAX_PENDING)
-	  {	    
-	    tempSet = workSet;
-		if(select(highDescSocket+1,&tempSet,NULL,NULL,&time_out) == 1)	
-		{						// wait for incomming connections on listenSock within time_out
-		  
+	  {	
+	    /*
+	    tempSet = workSet;					// set tmpSet; some OS chanche tmpSet after select
+	    time_out.tv_sec = 0; time_out.tv_usec = 10000;	// set timeout; some OS chanche time_out after select
+	    
+		while((retVal = select(highDescSocket+1,&tempSet,NULL,NULL,&time_out)) < 0)
+		{
+		  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
+			  {
+			    fprintf(stderr, "select errno: %d\n", errno);	
+								// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+								//
+			    return -1;    			// errno == 4 means EINTR == Interrupted system call
+			  }
+		}
+	    */  
+		while((retVal = poll(&tempSet, highDescSocket, time_out)) < 0)
+		{
+		  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
+			  {
+			    fprintf(stderr, "select errno: %d\n", errno);	
+								// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+								//
+			    return -1;    			// errno == 4 means EINTR == Interrupted system call
+			  }
+		}
+								// wait for incomming connections on listenSock within time_out
+		if(retVal)  
+		{
 		  //printf("server_accept_wait_for_client\n");
 		  if(((workSock) = accept((listenSock), 
 		    (struct sockaddr*)&clientAddr, &clientAddrLen)) < 0)				
@@ -299,10 +332,10 @@ int serverProcessingTcp(int workSock, char *oldFilePath, long long oldFileSize)
     
     if(OOB)							// if OOB data is received
     {
-      //puts("recv OOB");
+      //puts("recv OOB");					
       OOB = bufOOBin = 0;					// recv sometimes return to perror "Resource temporarily unavailable"
       while(recv(workSock, &bufOOBin, sizeof(bufOOBin), MSG_OOB) < 0)		
-      {			    
+      {			    					// SOMETIMES SET ERRNO TO 11 OR 4
 	fprintf(stderr, "PID: %d recv SIGURG errno: %d\n", getpid(), errno);
 								// errno == 4 means EINTR == Interrupted system call 
 	if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)		
