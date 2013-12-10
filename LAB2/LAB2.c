@@ -1,5 +1,6 @@
 // client send file
 // server receive and save local
+// CTRL+Z on client side == send OOB data '5' to server
 
 #include <sys/socket.h>
 #include <sys/types.h>
