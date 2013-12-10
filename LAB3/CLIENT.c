@@ -19,7 +19,6 @@
 #include <errno.h>
 
 
-#define	MAX_PENDING		1						// max pending client connections
 #define	BUFFER_SIZE  		1024						// for incomming
 #define ARG_ERROR_MESS		"\n[protocol] [ip] [port] [filename or full filepath]\n\n[protocol] need to be 'tcp'/'udp'\n"
 #define	MAX_FILEPATH_LENGHT	64						// in bytes
@@ -68,8 +67,9 @@ int startClientTcp(char *hostName, char *port, char *argFilePath)
     	char		filePath[MAX_FILEPATH_LENGHT];
 	strcpy(filePath, argFilePath);
 	hostAddr.sin_family = AF_INET;
-    	hostAddr.sin_port = htons(atoi(port));					// convert host byte order -> network byte order		
-	hostAddr.sin_addr.s_addr = inet_addr(hostName);				// old func convert IPv4 char* -> IPv4 bin (+ host byte order -> network byte order too) 
+    	hostAddr.sin_port = htons(atoi(port));					// convert host byte order -> network byte order
+	hostAddr.sin_addr.s_addr = inet_addr(hostName);				// old func convert IPv4 char* -> IPv4 bin 
+										// (+ host byte order -> network byte order too) 
 	filePath[strlen(filePath)] = '\0';
 	file = fopen(filePath, "rb");						// open file for read
 	fseek(file, 0L, SEEK_END);						
@@ -89,7 +89,8 @@ int startClientTcp(char *hostName, char *port, char *argFilePath)
 			return -1;
 		}  
 		ind++;
-		//hostAddr.sin_addr.s_addr = inet_addr(hostName);		// old func convert IPv4 char* -> IPv4 bin (+ host byte order -> network byte order too) 
+		//hostAddr.sin_addr.s_addr = inet_addr(hostName);		// old func convert IPv4 char* -> IPv4 bin 
+										// (+ host byte order -> network byte order too) 
 		setsockopt(listenSock, SOCK_STREAM, 
 							SO_REUSEADDR, &so_reuseaddr, sizeof so_reuseaddr);
 										// reuse ADDR when socket in TIME_WAIT condition
@@ -168,9 +169,9 @@ int startClientTcp(char *hostName, char *port, char *argFilePath)
 		  /*if(select(0,NULL,&temp,NULL,&time_out))
 		  {
 		    	  bufOOBin = 0;
-			  if(recv(workSock, &bufOOBin, sizeof(bufOOBin), MSG_OOB | MSG_WAITALL) < 0)			
-			  {							// recv sometimes return to perror "Resource temporarily unavailable"					
-			    printf("errno %d\n", errno);
+			  if(recv(workSock, &bufOOBin, sizeof(bufOOBin), MSG_OOB | MSG_WAITALL) < 0)	
+			  {							// recv sometimes return to 
+			    printf("errno %d\n", errno);			// perror "Resource temporarily unavailable"
 			    perror("func recv select");			    
 			  }
 			  printf("OOB data received: %d\n", bufOOBin);
