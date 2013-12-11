@@ -1,9 +1,13 @@
-/* many clients (limit MAX_PENDING) send files
+/* !NEED NCURSES LIB! SEE readme.txt!
+ * [how to compile]:
+ * gcc CLIENT.c -lncurces
+ * 
+ * many clients (limit MAX_PENDING) send files
  * server receive and save local
  * if some clients send file with the same fileName
  * then server drop last client connection with same fileName
  * and continue to download from first client with same fileName
- * CTRL+Z on client side == send OOB data '5' to server
+ * pressing 'SPACE' key on client side == send OOB data '5' to server
  */
 
 #include <sys/socket.h>
@@ -17,6 +21,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <ncurses.h>								// async/non_blocking input
 
 
 #define	BUFFER_SIZE  		1024						// for incomming
@@ -29,12 +34,14 @@ long long	fileSize = 2;
 long long 	filePointer = 0;
 FILE*		file;
 int 		OOB = 0;							// indicator for OOB (see signal handles)
+uint8_t 	bufOOB = 5;							// OOB byte that is send to server
 
 
 void hdl_SIGINT(int sig, siginfo_t *siginfo, void *context)			// handler for SIGINT (Ctrl+C) signal
 {
     if (sig==SIGINT)
     {	 
+	endwin();
 	if(ind)
 	{
 	  if(shutdown(listenSock, SHUT_RDWR) < 0)				// deny connection
@@ -44,16 +51,17 @@ void hdl_SIGINT(int sig, siginfo_t *siginfo, void *context)			// handler for SIG
 	  ind--;
 	}	
 	if(ftell(file) >= 0)							// check is file open
-		  fclose(file);
+		  fclose(file);	
+	exit(0);
     }
 }
-
+/*
 void hdl_SIGTSTP(int sig, siginfo_t *siginfo, void *context)			// handler for SIGTSTP (Ctrl+Z) signal (client)
 {
   if(sig==SIGTSTP)
     OOB = 1;
 }
-
+*/
 
 int startClientTcp(char *hostName, char *port, char *argFilePath)
 {
@@ -64,6 +72,7 @@ int startClientTcp(char *hostName, char *port, char *argFilePath)
 	int 		sendBytes;
 	int 		so_reuseaddr = 1;					// for setsockop SO_REUSEADDR set enable
 	uint8_t 	bufOOBin;	
+	int 		highDescSocket;
     	char		filePath[MAX_FILEPATH_LENGHT];
 	strcpy(filePath, argFilePath);
 	hostAddr.sin_family = AF_INET;
@@ -79,8 +88,7 @@ int startClientTcp(char *hostName, char *port, char *argFilePath)
 	struct timeval time_out; time_out.tv_sec = 0; time_out.tv_usec = 0;
 	struct timespec tim, tim2;
 	tim.tv_sec = 0;
-	tim.tv_nsec = 900000L;							// sleep time in nanosec
-	uint8_t bufOOB = 5;
+	tim.tv_nsec = 800000L;							// sleep time in nanosec
 	while(1)								// if any key is pressed -> exit from while loop
     	{		
 		if(((listenSock) = socket(AF_INET, SOCK_STREAM, 0)) < 0)		
@@ -107,10 +115,14 @@ int startClientTcp(char *hostName, char *port, char *argFilePath)
 		//printf("client_send_filePath %s\n", filePath);
 		while(send(listenSock, (char*)&filePath, MAX_FILEPATH_LENGHT*sizeof(char), 0) < MAX_FILEPATH_LENGHT*sizeof(char))
 		{								// send filePath
-		  perror("func send filePath");
-		  printf("errno: %d\n", errno);					// errno == 4 means EINTR == Interrupted system call 
-		  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)			
+		  printw("func send filePath");
+		  printw("errno: %d\n", errno);					// errno == 4 means EINTR == Interrupted system call 
+		  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
+		  {
+			perror("func send filePath");
+			printf("errno: %d\n", errno);				// errno == 4 means EINTR == Interrupted system call 
 			return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+		  }
 		}   								
 				
 		//FD_ZERO (&temp);
@@ -122,53 +134,72 @@ int startClientTcp(char *hostName, char *port, char *argFilePath)
 		//printf("client_send_fileSize %lld\n", fileSize);
 		while(send(listenSock, (char*)&fileSize, sizeof(long long), 0) < sizeof(long long))
 		{								// send fileSize
-		  perror("func send fileSize");
-		  printf("errno: %d\n", errno);
+		  printw("func send fileSize");
+		  printw("errno: %d\n", errno);
 		  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	// errno == 4 means EINTR == Interrupted system call 
+		  {
+			perror("func send fileSize");
+			printf("errno: %d\n", errno);
 			return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+		  }
 		} 								
 		
 		//puts("client_recv_filePointer");
 										// recv filePointer from server
 		while(recv(listenSock,(char*)&filePointer, sizeof(long long), MSG_WAITALL) < sizeof(long long))
 		{									      			  
-		  perror("func recv filePointer");
-		  printf("errno: %d\n", errno);
+		  printw("func recv filePointer");
+		  printw("errno: %d\n", errno);
 		  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	// errno == 4 means EINTR == Interrupted system call 
+		  {
+			perror("func recv filePointer");
+			printf("errno: %d\n", errno);
 			return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+		  }
 		}		
 		
 		//printf("client_recvFilePointer_fromServer %lld\n", filePointer);
-		fseek(file, filePointer, SEEK_SET);				// go to addr in file, according filePointer
-		
+		fseek(file, filePointer, SEEK_SET);				// go to addr in file, according filePointer	
+		timeout(0);							// set timeout for ncurces input
 		do
 		{
 		  readBytes = fread(&buf, sizeof(char), BUFFER_SIZE, file);
-		  if(OOB)							// if signal SIGTSTP set OOB to 1
+		  OOB = getch(); 
+		  if(OOB == ' ')						// if space is pressed
 		  {
 		    OOB = 0;							// send OOB data
 		    while(send(listenSock, &bufOOB, sizeof(bufOOB), MSG_OOB) < 0)
 		    {		      
-		      perror("func send SIGTSTP");
-		      printf("errno: %d\n", errno);				// errno == 4 means EINTR == Interrupted system call 
-		      if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)			
+		      printw("func send SIGTSTP");
+		      printw("errno: %d\n", errno);				// errno == 4 means EINTR == Interrupted system call 
+		      if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
+		      {
+			perror("func send SIGTSTP");
+			printf("errno: %d\n", errno);
 			return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+		      }
 		      
-		    }
-		    printf("signal SIGTSTP. OOB data sended: %d\n", bufOOB);
+		    }	
+		    clear();
+		    printw("'SPACE' key is pressed. OOB data sended: %d\nfile '%s' %lld bytes for send left\n", 
+			   bufOOB, filePath, (fileSize - filePointer));
 		    if(nanosleep(&tim , &tim2) < 0)   				// sleep in nanosec
 		    {
-			perror("nano sleep system call failed");
-			printf("errno: %d\n", errno);
+			printw("nano sleep system call failed");
+			printw("errno: %d\n", errno);
 										// errno == 4 means EINTR == Interrupted system call 
-			if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)			
+			if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
+			{
+			  perror("nano sleep system call failed");
+			  printf("errno: %d\n", errno);
 			  return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+			}
 		    }
 		  }		  
 		  //printf("client_send_fread %d\n", readBytes);
 		  /*if(select(0,NULL,&temp,NULL,&time_out))
 		  {
-		    	  bufOOBin = 0;
+		    	  bufOOBin = 0;int deleteln()
 			  if(recv(workSock, &bufOOBin, sizeof(bufOOBin), MSG_OOB | MSG_WAITALL) < 0)	
 			  {							// recv sometimes return to 
 			    printf("errno %d\n", errno);			// perror "Resource temporarily unavailable"
@@ -179,18 +210,26 @@ int startClientTcp(char *hostName, char *port, char *argFilePath)
 		  //printf("client_select filePointer %lld\n", filePointer);	// send data to server
 		  while((sendBytes = send(listenSock, (char*)&buf, readBytes, 0)) < 0)
 		  {
-		    perror("func send data");
-		    printf("errno: %d\n", errno);
+		    printw("func send data");
+		    printw("errno: %d\n", errno);
 		    if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
-		      return -1;		    
+		    {
+		      perror("func send data");
+		      printf("errno: %d\n", errno);
+		      return -1;
+		    }
 		  } 
 		  filePointer += sendBytes;
 		  if(nanosleep(&tim , &tim2) < 0)   				// sleep in nanosec
 		  {
-		      perror("nano sleep system call failed");
-		      printf("errno: %d\n", errno);				// errno == 4 means EINTR == Interrupted system call 
-		      if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)			
-			return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+		      printw("nano sleep system call failed");
+		      printw("errno: %d\n", errno);				// errno == 4 means EINTR == Interrupted system call 
+		      if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
+		      {
+			perror("nano sleep system call failed");
+			printf("errno: %d\n", errno);
+			return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+		      }
 		  }
 		  //puts("client_send_fieFragment");
 		}while(readBytes > 0);
@@ -208,7 +247,7 @@ int startClientTcp(char *hostName, char *port, char *argFilePath)
 		ind--;
 		//puts("client_file_close");
 		if(ftell(file) >= 0)						// check is file open
-		  fclose(file);		
+		  fclose(file);	
 		return 0;		
 	}
 }			
@@ -241,6 +280,7 @@ int main(int argc, char *argv[])
 		perror("main sigaction closeTerm");
 		return -1;
 	}	
+	/*
 	sendOOB.sa_sigaction =&hdl_SIGTSTP;
 	sendOOB.sa_flags = SA_SIGINFO;
 	if(sigaction(SIGTSTP, &sendOOB, NULL) < 0)				// set handler for SIGTSTP signal (CTRL+Z) (client)
@@ -248,6 +288,8 @@ int main(int argc, char *argv[])
 	  perror("main sigaction sendOOB");
 	  return -1;
 	}
+	*/
+	initscr();							// start work with ncurces
 	if(!strcmp(argv[1], "tcp"))
 	{	 
 	  startClientTcp(argv[2], argv[3], argv[4]);				// tcp
@@ -272,5 +314,6 @@ int main(int argc, char *argv[])
 	}
 	if(ftell(file) >= 0)							// check is file open
 		  fclose(file);
+	endwin();								// end work with ncurces
     	return 0;
 }

@@ -3,7 +3,7 @@
  * if some clients send file with the same fileName
  * then server drop last client connection with same fileName
  * and continue to download from first client with same fileName
- * CTRL+Z on client side == send OOB data '5' to server
+ * pressing 'SPACE' key on client side == send OOB data '5' to server
  */
 
 #include <sys/socket.h>
@@ -29,7 +29,7 @@ int 		workSock, listenSock;				// socket descriptors
 int 		ind = 0;					// indicator that any socket in open
 int 		nClients = 0;					// count of connected clients
 FILE*		file;
-int 		OOB = 0;					// indicator for OOB (see signal handles)
+//int 		OOB = 0;					// indicator for OOB (see signal handles)
 
 
 
@@ -66,13 +66,13 @@ void hdl_SIGINT(int sig, siginfo_t *siginfo, void *context)	// handler for SIGIN
 		  fclose(file);
     }
 }
-
+/*
 void hdl_SIGURG(int sig, siginfo_t *siginfo, void *context)	// handler for OOB data received signal (server)
 {
   if(sig==SIGURG)
     OOB = 1;
 }
-
+*/
 int startServerTcp(char *hostName, char *port)
 {
 	long long	fileSize = 1;
@@ -302,18 +302,22 @@ int startServerTcp(char *hostName, char *port)
 
 
 
-int serverProcessingTcp(int workSock, char *oldFilePath, long long oldFileSize)
+int serverProcessingTcp(int oldWorkSock, char *oldFilePath, long long oldFileSize)
 {
 
   long long	fileSize = oldFileSize;
   long long 	filePointer = 0;  
   char 		buf[BUFFER_SIZE];				// buffer for incomming
   int 		readBytes = 1;					// count of	
+  int 		workSock = oldWorkSock;
   int 		clientFirstPacket = 1;				// client first packet indicator
   char 		c[64] = {0};					// for terminal input
+  int		highDescSocket, retVal;				// for select()
   char		filePath[MAX_FILEPATH_LENGHT];
   long long 	localFileSize = 0;
   uint8_t 	bufOOBin;
+  int		recvFlag = 0;
+  /*
   struct sigaction recvOOB;
   recvOOB.sa_sigaction =&hdl_SIGURG;
   recvOOB.sa_flags = SA_SIGINFO;
@@ -324,35 +328,63 @@ int serverProcessingTcp(int workSock, char *oldFilePath, long long oldFileSize)
   }  
   fcntl(workSock, F_SETOWN, getpid()); 				// set pid which will be 
 								// recieve SIGIO and SIGURG on descriptor' events
+  */
   strcpy(filePath, oldFilePath);				// copy filePath
-  ind = 1;	
-  printf("PID: %d file '%s' %lld bytes start downloading\n", getpid(), filePath, fileSize);
+  ind = 1;  
+  /*
+  fd_set tempSet, workSet;		
+  struct timeval time_out;					// timeout	
+  highDescSocket = workSock;					// set high socket descriptor for select func
+  FD_ZERO (&workSet);
+  FD_SET (workSock,&workSet);
+  tempSet = workSet;
+  */
+  fcntl(workSock, F_SETFL, O_NONBLOCK);				// set socket to NON_BLOCKING
+  struct pollfd tempSet;
+  int time_out = 0;						// 0 milisec
+  tempSet.fd = workSock;
+  tempSet.events = POLLPRI;
+  highDescSocket = 1;
+  printf("PID: %d file '%s' %lld bytes start downloading\n", getpid(), filePath, fileSize);  
   while(filePointer < fileSize && readBytes)							
   {
-    
-    if(OOB)							// if OOB data is received
+    /*
+    tempSet = workSet;						// set tmpSet; some OS chanche tmpSet after select
+    time_out.tv_sec = 0; time_out.tv_usec = 0;			// set timeout; some OS chanche time_out after select
+	
+    while((retVal = select(highDescSocket+1,NULL,NULL,&tempSet,&time_out)) < 0)
+    {								// wait for OOB data on workSock within time_out
+      if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
+	      {
+		fprintf(stderr, "select errno: %d\n", errno);	
+								// errno == 11 means EAGAIN or EWOULDBLOCK == Try again						    
+		return -1;    					// errno == 4 means EINTR == Interrupted system call
+	      }
+    }
+    */
+    while((retVal = poll(&tempSet, highDescSocket, time_out)) < 0)
+    {
+      if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
+      {
+	fprintf(stderr, "ppoll errno: %d\n", errno);	
+					    // errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+	return -1;    			// errno == 4 means EINTR == Interrupted system call
+      }
+    }
+    if(retVal)							// if OOB data is received
     {
       //puts("recv OOB");					
-      OOB = bufOOBin = 0;					// recv sometimes return to perror "Resource temporarily unavailable"
-      while(recv(workSock, &bufOOBin, sizeof(bufOOBin), MSG_OOB) < 0)		
+      //OOB = bufOOBin = 0;					// recv sometimes return to perror "Resource temporarily unavailable"
+      while(recv(workSock, &bufOOBin, sizeof(bufOOBin), MSG_OOB | MSG_WAITALL) < 0)		
       {			    					// SOMETIMES SET ERRNO TO 11 OR 4
-	fprintf(stderr, "PID: %d recv SIGURG errno: %d\n", getpid(), errno);
+	fprintf(stderr, "PID: %d recv OOB errno: %d\n", getpid(), errno);
 								// errno == 4 means EINTR == Interrupted system call 
 	if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)		
 	  return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
       }
-      printf("PID: %d signal SIGURG. OOB data received: %d\nPID: %d file '%s' %lld bytes for download left\n", 
+      printf("PID: %d OOB data received: %d\nPID: %d file '%s' %lld bytes for download left\n", 
 	     getpid(), bufOOBin, getpid(), filePath, (fileSize - filePointer));
     }
-    
-    
-    //printf("server_select %lld %lld\n", filePointer, fileSize);
-    /*if(select(0,NULL,NULL,&temp,&time_out) < 0)
-    {
-      puts("server timeout 10s reached");
-      break;
-    }     */     
-    //printf("server_recv data\n");
 								// check if file exist (filename gets from client message)
         if(clientFirstPacket)					// if first packet from client
 	{		
@@ -439,15 +471,21 @@ int serverProcessingTcp(int workSock, char *oldFilePath, long long oldFileSize)
 	}
     else
     {
-    //puts("server recv data");
-      while((readBytes = recv(workSock, (char*)&buf, BUFFER_SIZE*sizeof(char), 0)) < 0)
+    //puts("server recv data");      
+      if((filePointer + BUFFER_SIZE*sizeof(char)) <= fileSize)
+	recvFlag = MSG_WAITALL;
+      else
+	recvFlag = 0;      
+      while((readBytes = recv(workSock, (char*)&buf, BUFFER_SIZE*sizeof(char), recvFlag)) < 0)
 				    // receive data from client
-      {
-	fprintf(stderr, "PID: %d recv data errno: %d\n", getpid(), errno);				  
-								// errno == 4 means EINTR == Interrupted system call 
+      {								// errno == 4 means EINTR == Interrupted system call 
 	if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
-	  return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+	{
+	  fprintf(stderr, "PID: %d recv data errno: %d\n", getpid(), errno);
+	  return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+	}
       }
+      
       //printf("server_readbytes %d\n", readBytes);	
       //printf("server_fwrite filePointer %lld\n",  filePointer);
       fwrite((char*)buf, readBytes, 1, file);			// write data to file
