@@ -413,7 +413,7 @@ int serverProcessingTcp(int oldWorkSock, char *oldFilePath, long long oldFileSiz
     {
       if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
       {
-	fprintf(stderr, "ppoll errno: %d\n", errno);	
+	fprintf(stderr, "poll errno: %d\n", errno);	
 					    // errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 	return -1;    			// errno == 4 means EINTR == Interrupted system call
       }
@@ -586,6 +586,9 @@ int startServerUdp(char *hostName, char *port)
 	  clientVect[i].pid = -1;	
 	  clientVect[i].status = 0;
 	}
+	 struct timespec tim, tim2;
+		      tim.tv_sec = 0;
+		      tim.tv_nsec = 800000L;
 	parentPid = getpid();
 	hostAddr.sin_family = AF_INET;
     	hostAddr.sin_port = htons(atoi(port));			// convert host byte order -> network byte order
@@ -631,20 +634,7 @@ int startServerUdp(char *hostName, char *port)
 	clientAddrLen = sizeof(clientAddr);
 	while(1)								
     	{
-	  if(nClients < MAX_PENDING)
-	  {	
-		while((retVal = poll(&tempSet, highDescSocket, time_out)) < 0)
-		{
-		  fprintf(stderr, "poll1 errno: %d\n", errno);	
-		  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
-			  {
-			    fprintf(stderr, "poll errno: %d\n", errno);	
-								// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
-								//
-			    return -1;    			// errno == 4 means EINTR == Interrupted system call
-			  }
-		}
-		 if(nClients)					// if any child proc exists
+	   if(nClients)					// if any child proc exists
 		{						// -1 == wait for all child proc 
 		  switch((childPid = waitpid(-1, &status, WNOHANG))) 
 		  {						// WNOHANG == return control immediately
@@ -669,10 +659,12 @@ int startServerUdp(char *hostName, char *port)
 			}		      
 		      }
 		      nClients--;
+		      /*
 		      //system("clear");		      
 		      for(i = 0; i < MAX_PENDING; i++)		
 			      printf("[%d]: %d %d ", i, clientVect[i].pid, clientVect[i].status);		      
 		      printf("\n\n");
+		      */
 		      if (WIFEXITED (status))
 			retChild = WEXITSTATUS (status);	// get child return value
 		      /*
@@ -694,6 +686,20 @@ int startServerUdp(char *hostName, char *port)
 		    }		
 		  }
 		}
+	  if(nClients < MAX_PENDING)
+	  {	
+		while((retVal = poll(&tempSet, highDescSocket, time_out)) < 0)
+		{
+		  fprintf(stderr, "poll1 errno: %d\n", errno);	
+		  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
+			  {
+			    fprintf(stderr, "poll errno: %d\n", errno);	
+								// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+								//
+			    return -1;    			// errno == 4 means EINTR == Interrupted system call
+			  }
+		}
+		
 		// wait for incomming connections on listenSock within time_out
 		//printf("retVal: %d\n", retVal);
 		if(retVal)  
@@ -787,6 +793,15 @@ int startServerUdp(char *hostName, char *port)
 			    }
 			    default:						// recv data
 			    {
+			       if(nanosleep(&tim , &tim2) < 0)   				// sleep in nanosec
+			      {				// errno == 4 means EINTR == Interrupted system call 
+				  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
+				  {
+				    perror("nano sleep system call failed");
+				    printf("errno: %d\n", errno);
+				    return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+				  }
+			      }
 			      //puts("data other1");
 			      //printf("RECV DATA, '%s' port: %d\n", clientVect[i].filePath, clientVect[i].port);
 			      oldClient = 2;
@@ -975,7 +990,7 @@ int serverProcessingUdp(int oldWorkSock, struct sockaddr_in oldHostAddr, long lo
   tempSet.fd = workSock;
   tempSet.events = POLLPRI;
   highDescSocket = 1;
-  printf("PID: %d file '%s' %lld bytes start downloading\n", getpid(), filePath, fileSize); 
+  printf("PID: %d file '%s' %lld bytes start downloading port: %d\n", getpid(), filePath, fileSize, clientVect[index].port); 
   while(filePointer < fileSize)							
   {
     /*
@@ -1257,9 +1272,7 @@ int serverProcessingUdp(int oldWorkSock, struct sockaddr_in oldHostAddr, long lo
 			    }
 			  }
 		      if(nanosleep(&tim , &tim2) < 0)   				// sleep in nanosec
-		  {
-		      printf("nano sleep system call failed");
-		      printf("errno: %d\n", errno);				// errno == 4 means EINTR == Interrupted system call 
+		  {				// errno == 4 means EINTR == Interrupted system call 
 		      if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
 		      {
 			perror("nano sleep system call failed");

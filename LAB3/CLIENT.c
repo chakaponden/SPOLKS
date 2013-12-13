@@ -624,7 +624,7 @@ int startClientUdp(char *hostName, char *port, char *argFilePath)
 			  return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
 		    }
 		  } 		  
-		  printf("filePointer: %lld sendBytes: %d, readBytes: %d\n", filePointer, sendBytes, readBytes);
+		  //printf("filePointer: %lld sendBytes: %d, readBytes: %d\n", filePointer, sendBytes, readBytes);
 		  if(nanosleep(&tim , &tim2) < 0)   				// sleep in nanosec
 		    {							// errno == 4 means EINTR == Interrupted system call 
 			if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
@@ -683,7 +683,7 @@ int startClientUdp(char *hostName, char *port, char *argFilePath)
 		  }
 		if(retVal)
 		{
-		    printf("filePointer: %lld recvMess: %d\n", filePointer, recvMess);
+		    //printf("filePointer: %lld recvMess: %d\n", filePointer, recvMess);
 		    filePointer += recvMess;	
 		  count = 0;
 		}
