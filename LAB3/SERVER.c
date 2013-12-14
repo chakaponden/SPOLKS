@@ -896,7 +896,7 @@ int startServerUdp(char *hostName, char *port)
 			if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
 				return -1;			// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
 		      } 
-		      printf("send confirmMess: %d\n", confirmMess);		      
+		      //printf("send confirmMess: %d\n", confirmMess);		      
 		      //confirmMess = 1;
 		    }	    
 		  //}
@@ -1384,6 +1384,6 @@ int main(int argc, char *argv[])
 	}
 	if(ftell(file) >= 0)							// check is file open
 		  fclose(file);
-	fprintf(stdout, "PID: %d exit\n", getpid());	
+	//fprintf(stdout, "PID: %d exit\n", getpid());	
     	return 0;
 }
