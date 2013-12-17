@@ -8,6 +8,7 @@
  * then server drop last client connection with same fileName
  * and continue to download from first client with same fileName
  * pressing 'SPACE' key on client side == send OOB data '5' to server
+ * CTRL+C == default force terminate client
  */
 
 #include <sys/socket.h>
@@ -37,13 +38,15 @@ FILE*		file;
 int 		OOB = 0;							// indicator for OOB (see signal handles)
 uint8_t 	bufOOB = 5;							// OOB byte that is send to server
 char		*proto;
+int 		tcp1 = 0;
 
 
 void hdl_SIGINT(int sig, siginfo_t *siginfo, void *context)			// handler for SIGINT (Ctrl+C) signal
 {
     if (sig==SIGINT)
     {	 
-	//endwin();
+      if(tcp1)									// if use tcp
+	endwin();								// end work with ncurses lib
 	if(ind)
 	{
 	  if(!strcmp(proto, "tcp"))
@@ -165,7 +168,10 @@ int startClientTcp(char *hostName, char *port, char *argFilePath)
 		
 		//printf("client_recvFilePointer_fromServer %lld\n", filePointer);
 		fseek(file, filePointer, SEEK_SET);				// go to addr in file, according filePointer	
+		timeout(0);
+		initscr();
 		timeout(0);							// set timeout for ncurces input
+		
 		do
 		{
 		  readBytes = fread(&buf, sizeof(char), BUFFER_SIZE, file);
@@ -672,8 +678,8 @@ int startClientUdp(char *hostName, char *port, char *argFilePath)
 			  retVal = 1;			  
 			if(recvMess == 6666)
 			{
-			  puts("get 6666");
-			  return -1;
+			  puts("get 6666");					// FOR DEBUG!!! SERVER DONT WORK
+			  return -1;						// WITH MANY CLIENTS!!! WAAA!!
 			}
 										// data confirmed by server						// something wrong == try again			
 		      }
@@ -692,7 +698,7 @@ int startClientUdp(char *hostName, char *port, char *argFilePath)
 		  count++;
 		  if(count == 6)
 		  {
-		    printf("send data filePointer: %lld, no confirm from server %d milisec\n", filePointer, time_out);
+		    printf("send data filePointer: %lld, no confirm from server %lld milisec\n", filePointer, (long long int)(count*time_out));
 		    return -1;
 		  }
 		}
@@ -750,6 +756,7 @@ int main(int argc, char *argv[])
 	proto = argv[1];
 	if(!strcmp(argv[1], "tcp"))
 	{	 
+	  tcp1  = 1;
 	  startClientTcp(argv[2], argv[3], argv[4]);				// tcp
 	}
 	else
@@ -760,6 +767,7 @@ int main(int argc, char *argv[])
 	{
 	  if(!strcmp(argv[1], "tcp"))
 	  {
+	    endwin();
 		if(shutdown(listenSock, SHUT_RDWR) < 0)				// deny connection
 		{
 			perror("func shutdown listenSock main");
@@ -775,6 +783,6 @@ int main(int argc, char *argv[])
 	}
 	if(ftell(file) >= 0)							// check is file open
 		  fclose(file);
-// 	//endwin();								// end work with ncurces
+ 	endwin();								// end work with ncurces
     	return 0;
 }

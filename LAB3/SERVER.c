@@ -4,6 +4,7 @@
  * then server drop last client connection with same fileName
  * and continue to download from first client with same fileName
  * pressing 'SPACE' key on client side == send OOB data '5' to server
+ * CTRL+C == default force terminate server
  */
 
 #include <sys/socket.h>
@@ -33,9 +34,9 @@ int 		workSock, listenSock;				// socket descriptors
 int 		ind = 0;					// indicator that any socket in open
 int 		nClients = 0;					// count of connected clients
 FILE*		file;
-pid_t		parentPid;
+pid_t		parentPid = -1;
 //int 		OOB = 0;					// indicator for OOB (see signal handles)
-
+int a;
 
 
 struct clientInf
@@ -150,9 +151,9 @@ int startServerTcp(char *hostName, char *port)
 	setsockopt(listenSock, SOL_SOCKET, 
 						SO_REUSEADDR, &so_reuseaddr, sizeof so_reuseaddr);
 								// reuse ADDR when socket in TIME_WAIT condition
-	setsockopt(listenSock, SOL_SOCKET, 
+	/*setsockopt(listenSock, SOL_SOCKET, 
 						SO_REUSEPORT, &so_reuseaddr, sizeof so_reuseaddr);
-								// reuse PORT when socket in TIME_WAIT condition
+								// reuse PORT when socket in TIME_WAIT condition*/
     	if(bind((listenSock), (struct sockaddr *)&hostAddr, sizeof(hostAddr)) < 0)
 								// socket is associated with IPv4 address
     	{
@@ -204,7 +205,7 @@ int startServerTcp(char *hostName, char *port)
 		{
 		  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
 			  {
-			    fprintf(stderr, "select errno: %d\n", errno);	
+			    fprintf(stderr, "poll errno: %d\n", errno);	
 								// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 								//
 			    return -1;    			// errno == 4 means EINTR == Interrupted system call
@@ -413,7 +414,7 @@ int serverProcessingTcp(int oldWorkSock, char *oldFilePath, long long oldFileSiz
     {
       if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
       {
-	fprintf(stderr, "poll errno: %d\n", errno);	
+	fprintf(stderr, "PID: %d poll errno: %d\n", getpid(), errno);	
 					    // errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 	return -1;    			// errno == 4 means EINTR == Interrupted system call
       }
@@ -422,7 +423,7 @@ int serverProcessingTcp(int oldWorkSock, char *oldFilePath, long long oldFileSiz
     {
       //puts("recv OOB");					
       //OOB = bufOOBin = 0;					// recv sometimes return to perror "Resource temporarily unavailable"
-      while(recv(workSock, &bufOOBin, sizeof(bufOOBin), MSG_OOB | MSG_WAITALL) < 0)		
+      while(recv(workSock, &bufOOBin, sizeof(int), MSG_OOB) < 0)		
       {			    					// SOMETIMES SET ERRNO TO 11 OR 4
 	fprintf(stderr, "PID: %d recv OOB errno: %d\n", getpid(), errno);
 								// errno == 4 means EINTR == Interrupted system call 
@@ -528,7 +529,7 @@ int serverProcessingTcp(int oldWorkSock, char *oldFilePath, long long oldFileSiz
       {								// errno == 4 means EINTR == Interrupted system call 
 	if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
 	{
-	  fprintf(stderr, "PID: %d recv data8 errno: %d\n", getpid(), errno);
+	  fprintf(stderr, "PID: %d recv data errno: %d\n", getpid(), errno);
 	  return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 	}
       }
@@ -609,9 +610,9 @@ int startServerUdp(char *hostName, char *port)
 	ind++;
 	setsockopt(workSock, SOL_SOCKET, 
 						SO_REUSEADDR, &so_reuseaddr, sizeof so_reuseaddr);
-	setsockopt(workSock, SOL_SOCKET, 
+	/*setsockopt(workSock, SOL_SOCKET, 
 						SO_REUSEPORT, &so_reuseaddr, sizeof so_reuseaddr);
-								// reuse PORT when socket in TIME_WAIT condition
+								// reuse PORT when socket in TIME_WAIT condition*/
 	setsockopt(workSock, SOL_SOCKET, 
 						SO_RCVBUF, &recvBuf, sizeof recvBuf);
 	
@@ -690,10 +691,9 @@ int startServerUdp(char *hostName, char *port)
 	  {	
 		while((retVal = poll(&tempSet, highDescSocket, time_out)) < 0)
 		{
-		  fprintf(stderr, "poll1 errno: %d\n", errno);	
+		  fprintf(stderr, "poll errno: %d\n", errno);	
 		  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
 			  {
-			    fprintf(stderr, "poll errno: %d\n", errno);	
 								// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 								//
 			    return -1;    			// errno == 4 means EINTR == Interrupted system call
@@ -712,7 +712,7 @@ int startServerUdp(char *hostName, char *port)
 		      fprintf(stderr, "recvFrom filePath OK3 errno: %d\n", errno);
 		      if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
 		      {
-			fprintf(stderr, "recvFrom data errno: %d\n", errno);
+			fprintf(stderr, "recvFrom filePath OK3 bad3 errno: %d\n", errno);
 			return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 		      }
 		    }			    
@@ -779,7 +779,7 @@ int startServerUdp(char *hostName, char *port)
 				{								// errno == 4 means EINTR == Interrupted system call 
 				  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
 				  {
-				    fprintf(stderr, "recvFrom fileSize NOT_OK errno: %d\n", errno);
+				    fprintf(stderr, "recvFrom fileSize NOT_OK bad0 errno: %d\n", errno);
 				    return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 				  }
 				}
@@ -797,8 +797,7 @@ int startServerUdp(char *hostName, char *port)
 			      {				// errno == 4 means EINTR == Interrupted system call 
 				  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
 				  {
-				    perror("nano sleep system call failed");
-				    printf("errno: %d\n", errno);
+				    fprintf(stderr, "nanosleep errno: %d\n", errno);
 				    return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 				  }
 			      }
@@ -825,7 +824,7 @@ int startServerUdp(char *hostName, char *port)
 			    fprintf(stderr, "recvFrom filePath OK1 errno: %d\n", errno);
 			    if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
 			    {
-			      fprintf(stderr, "recvFrom filePath OK errno: %d\n", errno);
+			      fprintf(stderr, "recvFrom filePath OK1 bad1 errno: %d\n", errno);
 			      return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 			    }
 			  }			  
@@ -891,7 +890,7 @@ int startServerUdp(char *hostName, char *port)
 		     while(sendto(workSock, (char*)&confirmMess, sizeof(int), MSG_WAITALL, 
 			(struct sockaddr*)&clientAddr, clientAddrLen) < sizeof(int))
 		      {			
-			fprintf(stderr, "sendto confirmMess2: %d errno: %d\n", confirmMess, errno);
+			fprintf(stderr, "sendto confirmMess: %d errno: %d\n", confirmMess, errno);
 								// errno == 4 means EINTR == Interrupted system call 
 			if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
 				return -1;			// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
@@ -1275,8 +1274,7 @@ int serverProcessingUdp(int oldWorkSock, struct sockaddr_in oldHostAddr, long lo
 		  {				// errno == 4 means EINTR == Interrupted system call 
 		      if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
 		      {
-			perror("nano sleep system call failed");
-			printf("errno: %d\n", errno);
+			fprintf(stderr, "PID: %d nanosleep errno: %d\n", getpid(), errno);
 			return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 		      }
 		  }
@@ -1289,9 +1287,9 @@ int serverProcessingUdp(int oldWorkSock, struct sockaddr_in oldHostAddr, long lo
 		      count++;
 		    if(count == 3 || otherPacket == maxOtherPacket)
 		    {
-			fprintf(stderr, "PID: %d timeout %lld milisec otherPacket: %lld\nrecvFrom data filePointer: %lld errno: %d\n",
-					    getpid(), (long long int)(count*data_time_out), otherPacket, filePointer, errno);
-			printf("readBytes: %d, port: %d", readBytes, clientAddrRecv.sin_port);
+			fprintf(stderr, 
+	"PID: %d timeout %lld milisec otherPacket: %lld\nrecvFrom data filePointer: %lld errno: %d readBytes: %d, port: %d\n",
+ 	getpid(), (long long int)(count*data_time_out), otherPacket, filePointer, errno, readBytes, clientAddrRecv.sin_port);
 			return -1;
 		    }
 		      
@@ -1334,10 +1332,10 @@ int main(int argc, char *argv[])
 		return -1;
 	}	
 	struct sigaction closeTerm;
-	if(!strcmp(argv[1], "tcp"))						// tcp
+	if(!strcmp(argv[1], "tcp"))						// tcp CTRL+C signal
 	  closeTerm.sa_sigaction =&hdl_SIGINT_TCP;
 	else
-	  closeTerm.sa_sigaction =&hdl_SIGINT_UDP;				// udp
+	  closeTerm.sa_sigaction =&hdl_SIGINT_UDP;				// udp CTRL+C signal
 	closeTerm.sa_flags = SA_SIGINFO;
 	if(sigaction(SIGINT, &closeTerm, NULL) < 0)				// set handler for SIGINT signal (CTRL+C)
 	{

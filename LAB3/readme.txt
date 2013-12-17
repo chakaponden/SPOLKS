@@ -1,5 +1,4 @@
-need linux kernel 3.9 and above (add SO_REUSEPORT)
-need ncurces library for client async input (OOB send)
+need ncurces library for client async input (OOB send works with tcp use only)
 
 [install ncurses lib]
 cd ncurses-5.9
