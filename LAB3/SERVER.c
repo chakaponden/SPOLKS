@@ -84,19 +84,8 @@ void hdl_SIGINT_UDP(int sig, siginfo_t *siginfo, void *context)	// handler for S
     {	 
         if(parentPid == getpid())
 	{
-	  if(ind > 1)
-	  {
-	    if(shutdown(listenSock, SHUT_RDWR) < 0)		// deny connection
-	      fprintf(stderr, "PID: %d shutdown listenSock signal errno: %d\n", getpid(), errno);
-	    if(close(listenSock) < 0)			
-		    fprintf(stderr, "PID: %d close listenSock signal errno: %d\n", getpid(), errno);
-	    else
-		    ind-=2;
-	  }
 	  if(ind)   
 	  {
-		  if(shutdown(workSock, SHUT_RDWR) < 0)		// deny connection
-			  fprintf(stderr, "PID: %d shutdown workSock signal errno: %d\n", getpid(), errno);
 		  if(close(workSock) < 0)		
 			  fprintf(stderr, "PID: %d close listenSock signal errno: %d\n", getpid(), errno);	
 		  else
