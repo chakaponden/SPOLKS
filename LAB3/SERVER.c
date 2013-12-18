@@ -23,7 +23,7 @@
 #include <errno.h>
 #include <poll.h>
 
-// #define SO_REUSEPORT 15						// need if kernel < 3.9
+// #define SO_REUSEPORT 15					// need if kernel < 3.9
 // [CMD TO CHECK KERNEL VER]:
 // uname -r 
 
@@ -398,7 +398,7 @@ int serverProcessingTcp(int oldWorkSock, char *oldFilePath, long long oldFileSiz
       if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
 	      {
 		fprintf(stderr, "select errno: %d\n", errno);	
-								// errno == 11 means EAGAIN or EWOULDBLOCK == Try again						    
+								// errno == 11 means EAGAIN or EWOULDBLOCK == Try again		    
 		return -1;    					// errno == 4 means EINTR == Interrupted system call
 	      }
     }
@@ -408,8 +408,8 @@ int serverProcessingTcp(int oldWorkSock, char *oldFilePath, long long oldFileSiz
       if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
       {
 	fprintf(stderr, "TCP PID: %d poll errno: %d\n", getpid(), errno);	
-					    // errno == 11 means EAGAIN or EWOULDBLOCK == Try again
-	return -1;    			// errno == 4 means EINTR == Interrupted system call
+								// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+	return -1;    						// errno == 4 means EINTR == Interrupted system call
       }
     }
     if(retVal)							// if OOB data is received
@@ -423,7 +423,7 @@ int serverProcessingTcp(int oldWorkSock, char *oldFilePath, long long oldFileSiz
 	if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)		
 	  return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
       }
-      printf("TCP PID: %d OOB data received: %d\nPID: %d file '%s' %lld bytes for download left\n", 
+      printf("TCP PID: %d OOB data received: %d\nTCP PID: %d file '%s' %lld bytes for download left\n", 
 	     getpid(), bufOOBin, getpid(), filePath, (fileSize - filePointer));
     }
 								// check if file exist (filename gets from client message)
@@ -518,7 +518,7 @@ int serverProcessingTcp(int oldWorkSock, char *oldFilePath, long long oldFileSiz
       else
 	recvFlag = 0;      
       while((readBytes = recv(workSock, (char*)&buf, BUFFER_SIZE*sizeof(char), recvFlag)) < 0)
-				    // receive data from client
+								// receive data from client
       {								// errno == 4 means EINTR == Interrupted system call 
 	if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
 	{
@@ -542,7 +542,7 @@ int serverProcessingTcp(int oldWorkSock, char *oldFilePath, long long oldFileSiz
     printf("TCP PID: %d file '%s' %lld bytes successful received\n", getpid(), filePath, fileSize);
   else
   {
-    printf("TCP PID: %d some errors with file '%s' %lld bytes\nPID: %d %lld bytes only received\n", 
+    printf("TCP PID: %d some errors with file '%s' %lld bytes\nTCP PID: %d %lld bytes only received\n", 
 	   getpid(), filePath, fileSize, getpid(), filePointer);
   }
   if(shutdown(workSock, SHUT_RDWR) < 0)				// deny connection
@@ -628,7 +628,7 @@ int startServerUdp(char *hostName, char *port)
 	clientAddrLen = sizeof(clientAddr);
 	while(1)								
     	{
-	   if(nClients)					// if any child proc exists
+	   if(nClients)						// if any child proc exists
 		{						// -1 == wait for all child proc 
 		  switch((childPid = waitpid(-1, &status, WNOHANG))) 
 		  {						// WNOHANG == return control immediately
@@ -664,16 +664,16 @@ int startServerUdp(char *hostName, char *port)
 		      /*
 		      struct timespec tim, tim2;
 		      tim.tv_sec = 0;
-		      tim.tv_nsec = 800000L;							// sleep time in nanosec
-		      if(nanosleep(&tim , &tim2) < 0)   				// sleep in nanosec
+		      tim.tv_nsec = 800000L;			// sleep time in nanosec
+		      if(nanosleep(&tim , &tim2) < 0)   	
 		  {
 		      printf("nano sleep system call failed");
-		      printf("errno: %d\n", errno);				// errno == 4 means EINTR == Interrupted system call 
+		      printf("errno: %d\n", errno);		// errno == 4 means EINTR == Interrupted system call 
 		      if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
 		      {
 			perror("nano sleep system call failed");
 			printf("errno: %d\n", errno);
-			return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+			return -1;				// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 		      }
 		  }*/
 		      break;
@@ -693,7 +693,7 @@ int startServerUdp(char *hostName, char *port)
 			  }
 		}
 		
-		// wait for incomming connections on listenSock within time_out
+								// wait for incomming connections on listenSock within time_out
 		//printf("retVal: %d\n", retVal);
 		if(retVal)  
 		{
@@ -701,59 +701,60 @@ int startServerUdp(char *hostName, char *port)
 		    while((readBytes = recvfrom(workSock, (char*)&buf, BUFFER_SIZE*sizeof(char), MSG_PEEK, 
 						(struct sockaddr*)&clientAddr, &clientAddrLen)) < 0)
 				    // receive data from client
-		    {								// errno == 4 means EINTR == Interrupted system call 
+		    {						// errno == 4 means EINTR == Interrupted system call 
 		      fprintf(stderr, "UDP recvFrom filePath OK3 errno: %d\n", errno);
 		      if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
 		      {
 			fprintf(stderr, "UDP recvFrom filePath OK3 bad3 errno: %d\n", errno);
-			return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+			return -1;				// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 		      }
 		    }			    
-		    for(i = 0; i < MAX_PENDING; i++)				// check if client already establish connection
+		    for(i = 0; i < MAX_PENDING; i++)		// check if client already establish connection
 		    {
 		      //printf("%d\n", i);
 		      if(clientVect[i].status)
 		      {		
-			//printf("status %d\n", i);
-			if((clientVect[i].addr.s_addr == clientAddr.sin_addr.s_addr) &&	// check port && ip	
+			//printf("status %d\n", i);		// check port && ip
+			if((clientVect[i].addr.s_addr == clientAddr.sin_addr.s_addr) &&	
 						      (clientVect[i].port == clientAddr.sin_port))			
-			{							// if client already establish connection and			  
+			{					// if client already establish connection and			  
 			  //printf("ip %d\n", i);
 			  switch(clientVect[i].pid)
 			  {
-			    case -1:						// recv fileSize
+			    case -1:				// recv fileSize
 			    {	
 			      //puts("fileSize");
 			      if(readBytes == sizeof(long long))
 			      {
-				while((readBytes = recvfrom(workSock, (char*)&fileSize, sizeof(long long), MSG_WAITALL, 	// remove from queue
+								// remove from queue
+				while((readBytes = recvfrom(workSock, (char*)&fileSize, sizeof(long long), MSG_WAITALL, 	
 						(struct sockaddr*)&clientAddr, &clientAddrLen)) < sizeof(long long))
 				    // receive data from client
-				{								// errno == 4 means EINTR == Interrupted system call 
+				{				// errno == 4 means EINTR == Interrupted system call 
 				  fprintf(stderr, "UDP recvFrom filePath OK2 errno: %d\n", errno);
 				  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
 				  {
 				    fprintf(stderr, "UDP recvFrom fileSize OK errno: %d\n", errno);
-				    return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+				    return -1;			// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 				  }
 				}	
 				//puts("fileSize1");
 				//printf("recv '%s' fileSize: %lld\n", clientVect[i].filePath, fileSize);
 				switch((childPid = fork()))
 				{
-					case -1: 				// error fork
+					case -1: 		// error fork
 						{
 							perror("UDP fork");
 							return -1;				
 						}	
-					case 0 : 				// child process
+					case 0 : 		// child process
 						{			
 							status = serverProcessingUdp(workSock, hostAddr, fileSize, clientAddr, i);	  
 							return status;	
 						}			
-					default :								// parent process
-						{		
-							clientVect[i].pid = childPid;			// add child pid    
+					default :		// parent process
+						{		// add child pid 
+							clientVect[i].pid = childPid;			   
 							nClients++;
 							break;				
 						}
@@ -765,33 +766,33 @@ int startServerUdp(char *hostName, char *port)
 			      }
 			      else
 			      {
-				
-				while((recvfrom(workSock, (char*)&fileSize, readBytes, MSG_WAITALL, 	// remove from queue
+								// remove from queue
+				while((recvfrom(workSock, (char*)&fileSize, readBytes, MSG_WAITALL, 	
 						(struct sockaddr*)&clientAddr, &clientAddrLen)) < readBytes)
-				    // receive data from client
-				{								// errno == 4 means EINTR == Interrupted system call 
+								// receive data from client
+				{				// errno == 4 means EINTR == Interrupted system call 
 				  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
 				  {
 				    fprintf(stderr, "UDP recvFrom fileSize NOT_OK bad0 errno: %d\n", errno);
-				    return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+				    return -1;			// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 				  }
 				}
 				
 				//puts("fileSize BAD");
-				confirmMess = 3333;				// request fileSize
+				confirmMess = 3333;		// request fileSize
 				oldClient = 1;
 				//puts("old not 1");
 			      }
 			      break;
 			    }
-			    default:						// recv data
+			    default:				// recv data
 			    {
-			       if(nanosleep(&tim , &tim2) < 0)   				// sleep in nanosec
-			      {				// errno == 4 means EINTR == Interrupted system call 
+			       if(nanosleep(&tim , &tim2) < 0)  // sleep in nanosec
+			      {					// errno == 4 means EINTR == Interrupted system call 
 				  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
 				  {
 				    fprintf(stderr, "UDP nanosleep errno: %d\n", errno);
-				    return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+				    return -1;			// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 				  }
 			      }
 			      //puts("data other1");
@@ -805,38 +806,38 @@ int startServerUdp(char *hostName, char *port)
 			}
 		      }      
 		    }
-		    if(!oldClient)						// if filePath recveived
+		    if(!oldClient)				// if filePath recveived
 		    {		
 		      //printf("filePath, readBytes: %d\n", readBytes);
 		       if(readBytes == MAX_FILEPATH_LENGHT*sizeof(char))
-		       {	
-			  while((readBytes = recvfrom(workSock, (char*)&filePath, MAX_FILEPATH_LENGHT*sizeof(char), MSG_WAITALL, 	// remove from queue
+		       {					// remove from queue
+			  while((readBytes = recvfrom(workSock, (char*)&filePath, MAX_FILEPATH_LENGHT*sizeof(char), MSG_WAITALL, 	
 				    (struct sockaddr*)&clientAddr, &clientAddrLen)) < MAX_FILEPATH_LENGHT*sizeof(char))
 			      // receive data from client
-			  {								// errno == 4 means EINTR == Interrupted system call 
+			  {					// errno == 4 means EINTR == Interrupted system call 
 			    fprintf(stderr, "UDP recvFrom filePath OK1 errno: %d\n", errno);
 			    if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
 			    {
 			      fprintf(stderr, "UDP recvFrom filePath OK1 bad1 errno: %d\n", errno);
-			      return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+			      return -1;			// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 			    }
 			  }			  
 			  //printf("filePath recv: %s\n", filePath);
-			  for(i = 0; i < MAX_PENDING; i++)			// search if this filePath already downloading
-			  {							// from other client
+			  for(i = 0; i < MAX_PENDING; i++)	// search if this filePath already downloading
+			  {					// from other client
 			    if(clientVect[i].status > 1)
 			    {
 			      if(!strcmp(clientVect[i].filePath, filePath))
 			      {
-				confirmMess = 5510;				// recv filePath already exist
-				otherClient = 1;				// and recv from other client
+				confirmMess = 5510;		// recv filePath already exist
+				otherClient = 1;		// and recv from other client
 				break;
 			      }	
 			    }
 			  }
 			  if(!otherClient)
 			  {
-			    for(i = 0; i < MAX_PENDING; i++)		// search for free element in clientVect[MAX_PENDING]
+			    for(i = 0; i < MAX_PENDING; i++)	// search for free element in clientVect[MAX_PENDING]
 			    {							
 			      if(clientVect[i].status == 0)
 			      {			    
@@ -844,7 +845,7 @@ int startServerUdp(char *hostName, char *port)
 				clientVect[i].addr = clientAddr.sin_addr;	// add client's sin_addr
 				clientVect[i].port = clientAddr.sin_port;	// add client's port
 				confirmMess = 8102;
-				clientVect[i].status++;			// update status == wait for fileSize
+				clientVect[i].status++;				// update status == wait for fileSize
 				break;
 			      }		      
 			    }
@@ -857,20 +858,20 @@ int startServerUdp(char *hostName, char *port)
 		       else
 		       {	
 
-			 //puts("filePath BAD1");
-			 while((recvfrom(workSock, (char*)&filePath, readBytes, MSG_WAITALL, 	// remove from queue
+			 //puts("filePath BAD1");		// remove from queue
+			 while((recvfrom(workSock, (char*)&filePath, readBytes, MSG_WAITALL, 	
 				    (struct sockaddr*)&clientAddr, &clientAddrLen)) < 0)
 			      // receive data from client
-			  {								// errno == 4 means EINTR == Interrupted system call 
+			  {					// errno == 4 means EINTR == Interrupted system call 
 			    if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
 			    {
 			      fprintf(stderr, "UDP recvFrom filePath NOT_OK errno: %d\n", errno);
-			      return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+			      return -1;			// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 			    }
 			  }
 			  //puts("filePath BAD2");
 
-			 confirmMess = 6666;						// request filePath
+			 confirmMess = 6666;			// request filePath
 			 //printf("6666 readBytes: %d\n", readBytes);			 
 			 //oldClient = 2;
 			  
@@ -879,7 +880,8 @@ int startServerUdp(char *hostName, char *port)
 		    }
 		    if(oldClient < 2)
 		    {
-			//printf("send confirmMess1: %d\n", confirmMess);					// send confirmMess
+			//printf("send confirmMess1: %d\n", confirmMess);	
+								// send confirmMess
 		     while(sendto(workSock, (char*)&confirmMess, sizeof(int), MSG_WAITALL, 
 			(struct sockaddr*)&clientAddr, clientAddrLen) < sizeof(int))
 		      {			
@@ -895,16 +897,13 @@ int startServerUdp(char *hostName, char *port)
 		}
 	  }
 	  oldClient = 0;
-	  //puts("old 0");
-		
+	  //puts("old 0");		
 	}	
 	return 0;
 }
 
 int serverProcessingUdp(int oldWorkSock, struct sockaddr_in oldHostAddr, long long oldFileSize, struct sockaddr_in oldClientAddr, int index)
 {
-
-  //int 		workSock = oldWorkSock;
   struct 	sockaddr_in clientAddr = oldClientAddr;
   struct 	sockaddr_in clientAddrRecv;
   struct 	sockaddr_in hostAddr = oldHostAddr;
@@ -927,7 +926,7 @@ int serverProcessingUdp(int oldWorkSock, struct sockaddr_in oldHostAddr, long lo
   long long 	maxOtherPacket = (BUFFER_SIZE*MAX_PENDING*100);
   			  struct timespec tim, tim2;
 		      tim.tv_sec = 0;
-		      tim.tv_nsec = 800000L;							// sleep time in nanosec
+		      tim.tv_nsec = 800000L;			// sleep time in nanosec
   /*
   struct sigaction recvOOB;
   recvOOB.sa_sigaction =&hdl_SIGURG;
@@ -962,7 +961,7 @@ int serverProcessingUdp(int oldWorkSock, struct sockaddr_in oldHostAddr, long lo
         	return -1;
     	}
     	
-    	  fcntl(workSock, F_SETFL, O_NONBLOCK);				// set socket to NON_BLOCKING
+    	  fcntl(workSock, F_SETFL, O_NONBLOCK);			// set socket to NON_BLOCKING
     	  */
   /*
   fd_set tempSet, workSet;		
@@ -975,7 +974,7 @@ int serverProcessingUdp(int oldWorkSock, struct sockaddr_in oldHostAddr, long lo
 
   struct pollfd tempSet, dataSet;
   int time_out = 0;						// 0 milisec
-  int data_time_out = 500;					// 0.1 sec
+  int data_time_out = 500;					// 0.5 sec
   dataSet.fd = workSock;
   dataSet.events = POLLIN;
   
@@ -1114,17 +1113,17 @@ int serverProcessingUdp(int oldWorkSock, struct sockaddr_in oldHostAddr, long lo
 	  //if(!readBytes)
 	  //	break;
 	  retVal = 0;	  
-	  while(retVal != 1)							// send num bytes already received (filePointer)
+	  while(retVal != 1)					// send num bytes already received (filePointer)
 		{
 		  //printf("send filePointer: %lld\n", filePointer);
 		  while(sendto(workSock, (char*)&filePointer, sizeof(long long), MSG_WAITALL,  
 				  (struct sockaddr*)&clientAddr, clientAddrLen) < sizeof(long long))
-		  {													// errno == 4 means EINTR == Interrupted system call 
+		  {						// errno == 4 means EINTR == Interrupted system call 
 		    if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
 		    {
 			  fprintf(stderr, "UDP PID: %d sendto filePointer: %lld errno: %d\n", getpid(), filePointer, errno);
-										// errno == 4 means EINTR == Interrupted system call 
-			  return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+								// errno == 4 means EINTR == Interrupted system call 
+			  return -1;				// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
 		    }
 		  }   
 		  //printf("poll\n");
@@ -1133,7 +1132,7 @@ int serverProcessingUdp(int oldWorkSock, struct sockaddr_in oldHostAddr, long lo
 		    if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
 			    {
 			      fprintf(stderr, "UDP PID: %d poll confirm filePointer errno: %d\n", getpid(), errno);	
-								  // errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+								// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 			      return -1;    			// errno == 4 means EINTR == Interrupted system call
 			    }
 		  }
@@ -1147,10 +1146,10 @@ int serverProcessingUdp(int oldWorkSock, struct sockaddr_in oldHostAddr, long lo
 				  (clientAddrRecv.sin_port == clientVect[index].port))
 		      {
 			//printf("PID: recv confirm recv filePointer errno: %d\n", getpid(), errno);
-			if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	// errno == 4 means EINTR == Interrupted system call 
-			{
+			if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
+			{					// errno == 4 means EINTR == Interrupted system call 
 			      fprintf(stderr, "UDP PID: %d recvFrom confirm filePointer: %lld errno: %d\n", getpid(), filePointer, errno);
-			      return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+			      return -1;			// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
 			}
 		      }
 		    }		    
@@ -1158,33 +1157,34 @@ int serverProcessingUdp(int oldWorkSock, struct sockaddr_in oldHostAddr, long lo
 		    if((clientAddrRecv.sin_addr.s_addr == clientVect[index].addr.s_addr) && 
 				  (clientAddrRecv.sin_port == clientVect[index].port))
 		    {
-		      count = otherPacket = 0;
-			while((readBytes = recvfrom(workSock,(char*)&recvMess, sizeof(int), 0, 		// remove from queue
+		      count = otherPacket = 0;			// remove from queue
+			while((readBytes = recvfrom(workSock,(char*)&recvMess, sizeof(int), 0, 		
 			    (struct sockaddr*)&clientAddrRecv, &clientAddrRecvLen)) < 0)
 			{			 
 			    //printf("PID: recv confirm recv filePointer errno: %d\n", getpid(), errno);
-			    if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	// errno == 4 means EINTR == Interrupted system call 
-				  return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+								// errno == 4 means EINTR == Interrupted system call 
+			    if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
+				  return -1;			// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
 			}	
 			
-			if(readBytes != sizeof(int))				// datagram is corrupted
-			{								// try again
+			if(readBytes != sizeof(int))		// datagram is corrupted
+			{					// try again
 			  retVal = 0;
 			  readBytes = 0;		      
 			}			 
 			else
 			{			  
 			    if(recvMess != 9713)
-			      retVal = 0;						// if filePointer not confirmed by client		
+			      retVal = 0;			// if filePointer not confirmed by client		
 			}		  
 		      }
 		      else
 			otherPacket++;
 		  }
 		  else
-		    count++;		    
-		  if(count == 60 || otherPacket == maxOtherPacket)
-		    {
+		    count++;		    	
+		  if(count == 60 || otherPacket == maxOtherPacket)		
+		    {						// timeout
 		      fprintf(stderr, "UDP PID: %d timeout %lld milisec otherPacket: %lld\nconfirm filePointer: %lld errno: %d\n",
 					      getpid(), (long long int)(count*data_time_out), otherPacket, filePointer, errno);
 		      return -1;
@@ -1206,7 +1206,7 @@ int serverProcessingUdp(int oldWorkSock, struct sockaddr_in oldHostAddr, long lo
 		      if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
 			      {
 				fprintf(stderr, "UDP PID: %d poll data errno: %d\n", getpid(), errno);	
-								    // errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+								// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 				return -1;    			// errno == 4 means EINTR == Interrupted system call
 			      }
 		    }
@@ -1220,29 +1220,31 @@ int serverProcessingUdp(int oldWorkSock, struct sockaddr_in oldHostAddr, long lo
 			if((clientAddrRecv.sin_addr.s_addr == clientVect[index].addr.s_addr) && 
 				    (clientAddrRecv.sin_port == clientVect[index].port))
 			{
-			  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	// errno == 4 means EINTR == Interrupted system call 
-			  {
+			  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
+			  {					// errno == 4 means EINTR == Interrupted system call 
 				fprintf(stderr, "UDP PID: %d recvfrom data + MSG_PEEK errno: %d\n", getpid(), errno);	
-				return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+				return -1;			// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
 			  }
 			}
 		      }
 		      //printf("rercBytes data: %d\n", readBytes);
+								// check ip and port
 			if((clientAddrRecv.sin_addr.s_addr == clientVect[index].addr.s_addr) && 
-				    (clientAddrRecv.sin_port == clientVect[index].port))	// check ip and port
+				    (clientAddrRecv.sin_port == clientVect[index].port))	
 			{
 			    count = otherPacket = 0;			    
 			    if(filePointer + readBytes <= fileSize)
 				recvFlag = readBytes;
 			    else
 			      recvFlag = fileSize - filePointer;
-			    while((readBytes = recvfrom(workSock, (char*)&buf, recvFlag, MSG_WAITALL, 		// remove from queue
+								// remove from queue
+			    while((readBytes = recvfrom(workSock, (char*)&buf, recvFlag, MSG_WAITALL, 		
 							      (struct sockaddr*)&clientAddrRecv, &clientAddrRecvLen)) < recvFlag)
 			    {
-				if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	// errno == 4 means EINTR == Interrupted system call 
-				{
+				if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
+				{				// errno == 4 means EINTR == Interrupted system call 
 				      fprintf(stderr, "UDP PID: %d recvfrom data + REMOVE_QUEUE errno: %d\n", getpid(), errno);
-				      return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+				      return -1;		// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
 				}			      
 			    }
 			    if(readBytes > recvFlag)
@@ -1256,19 +1258,19 @@ int serverProcessingUdp(int oldWorkSock, struct sockaddr_in oldHostAddr, long lo
 			  //printf("readBytes: %d", readBytes);
 			  while(sendto(workSock, (char*)&recvMess, sizeof(int), MSG_WAITALL,   	
 					(struct sockaddr*)&clientAddr, clientAddrLen) < sizeof(int)) 
-			  {						// send confirm recv filePointer to server		// errno == 4 means EINTR == Interrupted system call 
+			  {						// send confirm recv filePointer to server		
 			    if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
-			    {
+			    {						// errno == 4 means EINTR == Interrupted system call 
 				  fprintf(stderr, "UDP PID: %d send confirm data: %d errno: %d\n", getpid(), recvMess, errno);
 				  return -1;				// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
 			    }
 			  }
-		      if(nanosleep(&tim , &tim2) < 0)   				// sleep in nanosec
-		  {				// errno == 4 means EINTR == Interrupted system call 
+		      if(nanosleep(&tim , &tim2) < 0)   		// sleep in nanosec
+		  {							// errno == 4 means EINTR == Interrupted system call 
 		      if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
 		      {
 			fprintf(stderr, "UDP PID: %d nanosleep errno: %d\n", getpid(), errno);
-			return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+			return -1;					// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 		      }
 		  }
 			   //printf("send confirm data: %d\n", recvMess);
@@ -1291,7 +1293,7 @@ int serverProcessingUdp(int oldWorkSock, struct sockaddr_in oldHostAddr, long lo
 		    
 		    //printf("server_readbytes %d\n", readBytes);	
 		    //printf("server_fwrite filePointer %lld\n",  filePointer);
-		    fwrite((char*)buf, readBytes, 1, file);			// write data to file
+		    fwrite((char*)buf, readBytes, 1, file);		// write data to file
 		    filePointer += readBytes;
 		    fseek(file, filePointer, SEEK_SET);
 		    //printf("write data filePointer: %lld\n", filePointer);
@@ -1301,7 +1303,7 @@ int serverProcessingUdp(int oldWorkSock, struct sockaddr_in oldHostAddr, long lo
       //printf("filePointer: %lld, fileSize: %lld, readBytes: %d\n", filePointer, fileSize, readBytes);
   }
   //printf("server_fclose\n");
-  if(ftell(file) >= 0)						// check is file open
+  if(ftell(file) >= 0)							// check is file open
     fclose(file);		
   //printf("server_close_socket\n");
   if(filePointer == fileSize)
@@ -1317,7 +1319,7 @@ int serverProcessingUdp(int oldWorkSock, struct sockaddr_in oldHostAddr, long lo
 
 int main(int argc, char *argv[])
 {
-	if(argc != 3)								// check command-line arguments
+	if(argc != 3)							// check command-line arguments
 	{
 		puts(ARG_ERROR_MESS);
 		perror("main invalid command-line arguments");
@@ -1332,11 +1334,11 @@ int main(int argc, char *argv[])
 	  perror("main fork error");
 	  return -1;
 	}
-	case 0:									// child proc == TCP server
+	case 0:								// child proc == TCP server
 	{
 	  a = 1;
 	  closeTerm.sa_sigaction =&hdl_SIGINT_TCP;
-	  if(sigaction(SIGINT, &closeTerm, NULL) < 0)				// set handler for SIGINT signal (CTRL+C)
+	  if(sigaction(SIGINT, &closeTerm, NULL) < 0)			// set handler for SIGINT signal (CTRL+C)
 	  {
 		  perror("TCP main sigaction closeTerm");
 		  return -1;
@@ -1344,11 +1346,11 @@ int main(int argc, char *argv[])
 	  startServerTcp(argv[1], argv[2]);
 	  break;
 	}
-	default:								// parent proc == UDP server
+	default:							// parent proc == UDP server
 	{
 	  a = 0;
 	  closeTerm.sa_sigaction =&hdl_SIGINT_UDP;
-	  if(sigaction(SIGINT, &closeTerm, NULL) < 0)				// set handler for SIGINT signal (CTRL+C)
+	  if(sigaction(SIGINT, &closeTerm, NULL) < 0)			// set handler for SIGINT signal (CTRL+C)
 	  {
 		  perror("UDP main sigaction closeTerm");
 		  return -1;
@@ -1361,7 +1363,7 @@ int main(int argc, char *argv[])
 	{
 	  if(ind > 1)
 	  {
-		  if(shutdown(listenSock, SHUT_RDWR) < 0)				// deny connection
+		  if(shutdown(listenSock, SHUT_RDWR) < 0)		// deny connection
 		  {
 			  fprintf(stderr, "TCP PID: %d shutdown listenSock main errno: %d\n", getpid(), errno);
 			  return -1;
@@ -1377,7 +1379,7 @@ int main(int argc, char *argv[])
 	  {
 		  if(a)
 		  {
-		    if(shutdown(workSock, SHUT_RDWR) < 0)				// deny connection
+		    if(shutdown(workSock, SHUT_RDWR) < 0)		// deny connection
 		    {
 			    fprintf(stderr, "TCP PID: %d shutdown workSock main errno: %d\n", getpid(), errno);
 			    return -1;
@@ -1393,7 +1395,7 @@ int main(int argc, char *argv[])
 		  }
 	  }
 	}
-	if(ftell(file) >= 0)							// check is file open
+	if(ftell(file) >= 0)						// check is file open
 		  fclose(file);
 	//fprintf(stdout, "PID: %d exit\n", getpid());	
     	return 0;

@@ -37,7 +37,6 @@ long long 	filePointer = 0;
 FILE*		file;
 int 		OOB = 0;							// indicator for OOB (see signal handles)
 uint8_t 	bufOOB = 5;							// OOB byte that is send to server
-char		*proto;
 int 		tcp1 = 0;
 
 
@@ -49,7 +48,7 @@ void hdl_SIGINT(int sig, siginfo_t *siginfo, void *context)			// handler for SIG
 	endwin();								// end work with ncurses lib
 	if(ind)
 	{
-	  if(!strcmp(proto, "tcp"))
+	  if(tcp1)								// if use tcp
 	  {
 	    if(shutdown(listenSock, SHUT_RDWR) < 0)				// deny connection
 	      perror("func shutdown listenSock signal");
@@ -168,10 +167,8 @@ int startClientTcp(char *hostName, char *port, char *argFilePath)
 		
 		//printf("client_recvFilePointer_fromServer %lld\n", filePointer);
 		fseek(file, filePointer, SEEK_SET);				// go to addr in file, according filePointer	
-		timeout(0);
-		initscr();
-		timeout(0);							// set timeout for ncurces input
-		
+		initscr();							// init ncurses lib
+		timeout(0);							// set timeout for ncurces input		
 		do
 		{
 		  readBytes = fread(&buf, sizeof(char), BUFFER_SIZE, file);
@@ -243,7 +240,7 @@ int startClientTcp(char *hostName, char *port, char *argFilePath)
 		      }
 		  }
 		  //puts("client_send_fieFragment");
-		}while(readBytes > 0);
+		}while(readBytes > 0);						 
 		//puts("client_close_socket");
 		if(shutdown(listenSock, SHUT_RDWR) < 0)				// deny connection
 		{
@@ -300,7 +297,7 @@ int startClientUdp(char *hostName, char *port, char *argFilePath)
 	tim.tv_nsec = 8000000L;							// sleep time in nanosec
 	
 	struct pollfd tempSet;
-	int time_out = 30000;							// 1000 milisec = 1 sec	
+	int time_out = 30000;							// 30000 milisec = 30 sec	
 	tempSet.events = POLLIN;
 	highDescSocket = 1;
 	while(1)								// if any key is pressed -> exit from while loop
@@ -333,10 +330,11 @@ int startClientUdp(char *hostName, char *port, char *argFilePath)
 		while(retVal != 1)
 		{
 		  //printf("client_send_filePath2 %s\n", filePath);
+										// send filePath to server
 		  while(sendto(listenSock, (char*)&filePath, MAX_FILEPATH_LENGHT*sizeof(char), 0, 
 				  (struct sockaddr*)&hostAddr, hostAddrLen) < MAX_FILEPATH_LENGHT*sizeof(char))
-		  {								// send filePath					// errno == 4 means EINTR == Interrupted system call 
-		    if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
+		  {								// send filePath					
+		    if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
 		    {
 			  perror("sendto filePath\n");
 			  printf("errno: %d\n", errno);				// errno == 4 means EINTR == Interrupted system call 
@@ -344,13 +342,14 @@ int startClientUdp(char *hostName, char *port, char *argFilePath)
 		    }
 		  }   
 		  //printf("OK, pool wait\n");
+										// wait for confirmMess from server
 		  while((retVal = poll(&tempSet, highDescSocket, time_out)) < 0)
 		  {
 		    if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
 			    {
 			      fprintf(stderr, "poll send filePath errno: %d\n", errno);	
-								  // errno == 11 means EAGAIN or EWOULDBLOCK == Try again
-			      return -1;    			// errno == 4 means EINTR == Interrupted system call
+										// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+			      return -1;    					// errno == 4 means EINTR == Interrupted system call
 			    }
 		  }
 		  //printf("pool retVal: %d\n", retVal);
@@ -358,17 +357,18 @@ int startClientUdp(char *hostName, char *port, char *argFilePath)
 		  {
 		    count = 0;
 		    //printf("recvfrom\n");
+										// recv confirmMess from server
 		    while((readBytes = recvfrom(listenSock,(char*)&recvMess, sizeof(int), 0, 
 			    (struct sockaddr*)&hostAddrRecv, &hostAddrRecvLen)) < 0)
 		    {	
 		      if((hostAddrRecv.sin_addr.s_addr == hostAddr.sin_addr.s_addr) && 
 				  (hostAddrRecv.sin_port == hostAddr.sin_port))
 		      {
-			if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	// errno == 4 means EINTR == Interrupted system call 
+			if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
 			{
-			      perror("recvFrom confirm filePath\n");
+			      perror("recvFrom confirm filePath\n");		// errno == 4 means EINTR == Interrupted system call 
 			      printf("errno: %d\n", errno);
-			      return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+			      return -1;					// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
 			}
 		      }
 		    }
@@ -393,7 +393,7 @@ int startClientUdp(char *hostName, char *port, char *argFilePath)
 			    retVal = 1;
 			    break;
 			  }
-			  case 5510:						// file with the same filePath 
+			  case 5510:						// file with the same filePath, file
 			  {							// already download from other client
 			    return -1;
 			  }
@@ -411,7 +411,7 @@ int startClientUdp(char *hostName, char *port, char *argFilePath)
 		  else
 		  {		    
 		    count++;
-		    if(count == 2)
+		    if(count == 2)						// timeout wait for confirmMess from server
 		    {
 		      printf("send filePath '%s', no confirm from server %lld milisec\n", filePath, (long long int)(count*time_out));
 		      return -1;
@@ -424,11 +424,12 @@ int startClientUdp(char *hostName, char *port, char *argFilePath)
 		while(retVal != 1)						
 		{
 		  //printf("sendto\n");
+										// send fileSize to server
 		  while(sendto(listenSock, (char*)&fileSize, sizeof(long long), 0,  
 				  (struct sockaddr*)&hostAddr, hostAddrLen) < sizeof(long long))
 		  {								// send fileSize
 		    //printf("func send fileSize");
-		    //printf("errno: %d\n", errno);					// errno == 4 means EINTR == Interrupted system call 
+		    //printf("errno: %d\n", errno);				// errno == 4 means EINTR == Interrupted system call 
 		    if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
 		    {
 			  perror("sendto fileSize\n");
@@ -437,13 +438,14 @@ int startClientUdp(char *hostName, char *port, char *argFilePath)
 		    }
 		  }   
 		  //printf("poll\n");
+										// wait for confirmMess from server
 		  while((retVal = poll(&tempSet, highDescSocket, time_out)) < 0)
 		  {
 		    if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
 			    {
 			      fprintf(stderr, "poll sendto fileSize errno: %d\n", errno);	
-								  // errno == 11 means EAGAIN or EWOULDBLOCK == Try again
-			      return -1;    			// errno == 4 means EINTR == Interrupted system call
+										// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+			      return -1;    					// errno == 4 means EINTR == Interrupted system call
 			    }
 		  }
 		  //printf("retVal: %d\n", retVal);
@@ -451,6 +453,7 @@ int startClientUdp(char *hostName, char *port, char *argFilePath)
 		  {
 		    count = 0;
 		    //printf("recvFrom\n");
+										// recv confirmMess from server
 		    while((readBytes = recvfrom(listenSock,(char*)&recvMess, sizeof(int), 0, 
 			    (struct sockaddr*)&hostAddrRecv, &hostAddrRecvLen)) < 0)
 		    {	
@@ -458,12 +461,12 @@ int startClientUdp(char *hostName, char *port, char *argFilePath)
 				  (hostAddrRecv.sin_port == hostAddr.sin_port))
 		      {
 			//printf("func recv filePointer");
-			//printf("errno: %d\n", errno);
-			if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	// errno == 4 means EINTR == Interrupted system call 
+										//printf("errno: %d\n", errno);
+			if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
 			{
-			      perror("recvFrom confirm fileSize\n");
+			      perror("recvFrom confirm fileSize\n");		// errno == 4 means EINTR == Interrupted system call 
 			      printf("errno: %d\n", errno);
-			      return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+			      return -1;					// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
 			}
 		      }
 		    }		    
@@ -490,7 +493,7 @@ int startClientUdp(char *hostName, char *port, char *argFilePath)
 		  else
 		  {		    
 		    count++;
-		    if(count == 2)
+		    if(count == 2)						// timeout wait for confirmMess from server
 		    {
 		      printf("send fileSize '%lld', no confirm from server %lld milisec\n", fileSize, (long long int)(count*time_out));
 		      return -1;
@@ -510,30 +513,32 @@ int startClientUdp(char *hostName, char *port, char *argFilePath)
 		{
 		  
 		  //printf("poll\n"); 
+										// wait for filePointer from server
 		  while((retVal = poll(&tempSet, highDescSocket, time_out)) < 0)
 		  {
 		    if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
 			    {
 			      fprintf(stderr, "poll recvFrom filePointer errno: %d\n", errno);	
-								  // errno == 11 means EAGAIN or EWOULDBLOCK == Try again
-			      return -1;    			// errno == 4 means EINTR == Interrupted system call
+										// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+			      return -1;    					// errno == 4 means EINTR == Interrupted system call
 			    }
 		  }
 		  //printf("retVal: %d\n", retVal); 
 		  if(retVal)
 		  {
 		    count = 0;
+										// recv filePointer from server
 		    while((readBytes = recvfrom(listenSock,(char*)&filePointer, sizeof(long long), 0, 
 			    (struct sockaddr*)&hostAddrRecv, &hostAddrRecvLen)) < 0)
 		    {	
 		      if((hostAddrRecv.sin_addr.s_addr == hostAddr.sin_addr.s_addr) && 
 				  (hostAddrRecv.sin_port == hostAddr.sin_port))
 		      {
-			if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	// errno == 4 means EINTR == Interrupted system call 
+			if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
 			{
 			      perror("recvFrom filePointer\n");
-			      printf("errno: %d\n", errno);
-			      return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+			      printf("errno: %d\n", errno);			// errno == 4 means EINTR == Interrupted system call 
+			      return -1;					// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
 			}
 		      }
 		    }
@@ -551,12 +556,12 @@ int startClientUdp(char *hostName, char *port, char *argFilePath)
 			recvMess = 9713;
 			while(sendto(listenSock, (char*)&recvMess, sizeof(int), 0,  
 				      (struct sockaddr*)&hostAddr, hostAddrLen) < sizeof(int))
-			{						// send confirm recv filePointer to server		// errno == 4 means EINTR == Interrupted system call 
+			{							// send confirm recv filePointer to server
 			  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
 			  {
 				perror("sendto confirm filePointer\n");
-				printf("errno: %d\n", errno);		// errno == 4 means EINTR == Interrupted system call 
-				return -1;				// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+				printf("errno: %d\n", errno);			// errno == 4 means EINTR == Interrupted system call 
+				return -1;					// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
 			  }
 			} 
 			retVal = 1;						// filePointer received successfull			
@@ -575,9 +580,7 @@ int startClientUdp(char *hostName, char *port, char *argFilePath)
 		readBytes = 0;
 		time_out = 10000;
 		//printf("client_recvFilePointer_fromServer %lld\n", filePointer);			
-		timeout(0);							// set timeout for ncurces input
-		//initscr();							// start work with ncurces
-		do 	
+		do 								// loop - send file data 
 		{
 		  if(retVal)
 		  {
@@ -618,91 +621,94 @@ int startClientUdp(char *hostName, char *port, char *argFilePath)
 		  */
 		//retVal = 0;
 		//recvMess = 0;
-		if(readBytes)
-		{
-		  while((sendBytes = sendto(listenSock, (char*)&buf, readBytes, MSG_WAITALL, 
-				  (struct sockaddr*)&hostAddr, hostAddrLen)) < readBytes)
-		  {								// send filePath					// errno == 4 means EINTR == Interrupted system call 
-		    if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
-		    {
-			  perror("sendto data\n");
-			  printf("errno: %d\n", errno);				// errno == 4 means EINTR == Interrupted system call 
-			  return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
-		    }
-		  } 		  
-		  //printf("filePointer: %lld sendBytes: %d, readBytes: %d\n", filePointer, sendBytes, readBytes);
-		  if(nanosleep(&tim , &tim2) < 0)   				// sleep in nanosec
-		    {							// errno == 4 means EINTR == Interrupted system call 
-			if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
-			{
-			  perror("nanosleep\n");
-			  printf("errno: %d\n", errno);
-			  return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
-			}
-		    }
-		  //printf("poll data\n");
-		  while((retVal = poll(&tempSet, highDescSocket, time_out)) < 0)
-		  {	
-		    if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
-			    {
-			      fprintf(stderr, "poll data errno: %d\n", errno);	
-								  // errno == 11 means EAGAIN or EWOULDBLOCK == Try again
-			      return -1;    			// errno == 4 means EINTR == Interrupted system call
-			    }
-		  }
-		  //printf("retVal data %d\n", retVal);
-		  if(retVal)
-		  {		    
-		    while((recvBytes = recvfrom(listenSock,(char*)&recvMess, sizeof(int), MSG_WAITALL, 
-			    (struct sockaddr*)&hostAddrRecv, &hostAddrRecvLen)) < (sizeof(int)))
-		    {	
-		      if((hostAddrRecv.sin_addr.s_addr == hostAddr.sin_addr.s_addr) && 
-				  (hostAddrRecv.sin_port == hostAddr.sin_port))
+		  if(readBytes)
+		  {
+		    while((sendBytes = sendto(listenSock, (char*)&buf, readBytes, MSG_WAITALL, 
+				    (struct sockaddr*)&hostAddr, hostAddrLen)) < readBytes)
+		    {								// send readBytes
+		      if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
 		      {
-			if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	// errno == 4 means EINTR == Interrupted system call 
+			    perror("sendto data\n");
+			    printf("errno: %d\n", errno);			// errno == 4 means EINTR == Interrupted system call 
+			    return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+		      }
+		    } 		  
+		    //printf("filePointer: %lld sendBytes: %d, readBytes: %d\n", filePointer, sendBytes, readBytes);
+		    if(nanosleep(&tim , &tim2) < 0)   				// sleep in nanosec
+		      {							// errno == 4 means EINTR == Interrupted system call 
+			  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)	
+			  {
+			    perror("nanosleep\n");
+			    printf("errno: %d\n", errno);
+			    return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+			  }
+		      }
+		    //printf("poll data\n");
+										// wait for recvBytes from server == count of bytes 
+										// that is received by server
+		    while((retVal = poll(&tempSet, highDescSocket, time_out)) < 0)
+		    {	
+		      if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
+			      {
+				fprintf(stderr, "poll data errno: %d\n", errno);	
+										// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
+				return -1;    					// errno == 4 means EINTR == Interrupted system call
+			      }
+		    }
+		    //printf("retVal data %d\n", retVal);
+		    if(retVal)
+		    {		    
+										// recv recvBytes from server
+		      while((recvBytes = recvfrom(listenSock,(char*)&recvMess, sizeof(int), MSG_WAITALL, 
+			      (struct sockaddr*)&hostAddrRecv, &hostAddrRecvLen)) < (sizeof(int)))
+		      {	
+			if((hostAddrRecv.sin_addr.s_addr == hostAddr.sin_addr.s_addr) && 
+				    (hostAddrRecv.sin_port == hostAddr.sin_port))
 			{
-			      perror("recvFrom confirm data\n");
-			      printf("errno: %d\n", errno);
-			      return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+			  if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
+			  {
+				perror("recvFrom confirm data\n");		// errno == 4 means EINTR == Interrupted system call 
+				printf("errno: %d\n", errno);
+				return -1;					// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+			  }
 			}
 		      }
+		      //printf("recvMess data %d, readBytes: %d\n", recvMess, readBytes);
+		      if(recvBytes != sizeof(int))				// datagram is corrupted
+			retVal = 0;						// try again
+		      else
+		      {
+			if((hostAddrRecv.sin_addr.s_addr == hostAddr.sin_addr.s_addr) && 
+				    (hostAddrRecv.sin_port == hostAddr.sin_port))	// check ip and port
+			{
+			    retVal = 1;						// data confirmed by server	  
+			  if(recvMess == 6666)
+			  {
+			    puts("get 6666");					// FOR DEBUG!!! SERVER DONT WORK
+			    return -1;						// WITH MANY CLIENTS!!! WAAA!!
+			  }								
+			}
+			else							// datagram received from another ip:port
+			  retVal = 0;
+			}
 		    }
-		    //printf("recvMess data %d, readBytes: %d\n", recvMess, readBytes);
-		    if(recvBytes != sizeof(int))				// datagram is corrupted							// try again
-		      retVal = 0;
+		    if(retVal)
+		    {
+			//printf("filePointer: %lld recvMess: %d\n", filePointer, recvMess);
+			filePointer += recvMess;	
+			count = 0;
+		    }
 		    else
 		    {
-		      if((hostAddrRecv.sin_addr.s_addr == hostAddr.sin_addr.s_addr) && 
-				  (hostAddrRecv.sin_port == hostAddr.sin_port))	// check ip and port
+		      count++;
+		      if(count == 6)						// timeout wait for recvBytes from server
 		      {
-			  retVal = 1;			  
-			if(recvMess == 6666)
-			{
-			  puts("get 6666");					// FOR DEBUG!!! SERVER DONT WORK
-			  return -1;						// WITH MANY CLIENTS!!! WAAA!!
-			}
-										// data confirmed by server						// something wrong == try again			
+			printf("send data filePointer: %lld, no confirm from server %lld milisec\n",
+			       filePointer, (long long int)(count*time_out));
+			return -1;
 		      }
-		      else							// datagram received from another ip:port
-			retVal = 0;
-		      }
+		    }
 		  }
-		if(retVal)
-		{
-		    //printf("filePointer: %lld recvMess: %d\n", filePointer, recvMess);
-		    filePointer += recvMess;	
-		  count = 0;
-		}
-		else
-		{
-		  count++;
-		  if(count == 6)
-		  {
-		    printf("send data filePointer: %lld, no confirm from server %lld milisec\n", filePointer, (long long int)(count*time_out));
-		    return -1;
-		  }
-		}
-		}
 		  //printf("client_select filePointer %lld\n", filePointer);	// send data to server
 		  //puts("client_send_fieFragment");
 		//printf("filePointer: %lld, fileSize: %lld, readBytes: %d\n", filePointer, fileSize, readBytes);
@@ -753,21 +759,21 @@ int main(int argc, char *argv[])
 	  return -1;
 	}
 	*/
-	proto = argv[1];
 	if(!strcmp(argv[1], "tcp"))
 	{	 
-	  tcp1  = 1;
+	  tcp1 = 1;
 	  startClientTcp(argv[2], argv[3], argv[4]);				// tcp
 	}
 	else
 	{
 	  startClientUdp(argv[2], argv[3], argv[4]);				// udp
 	}
+	if(tcp1)
+	  endwin();								// end work with ncurces
 	if(ind)
 	{
-	  if(!strcmp(argv[1], "tcp"))
-	  {
-	    endwin();
+	  if(tcp1)								// if tcp
+	  {		
 		if(shutdown(listenSock, SHUT_RDWR) < 0)				// deny connection
 		{
 			perror("func shutdown listenSock main");
@@ -782,7 +788,6 @@ int main(int argc, char *argv[])
 		ind--;
 	}
 	if(ftell(file) >= 0)							// check is file open
-		  fclose(file);
- 	endwin();								// end work with ncurces
+		  fclose(file);								
     	return 0;
 }
