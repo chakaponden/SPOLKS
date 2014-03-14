@@ -24,8 +24,8 @@
 struct sockaddr_in		myHostAddr, dstHostAddr, srcHostAddr;
 char 				*myIpv4, *dstIpv4, *srcIpv4; 
 int 				rawSock, icmpSock;
-long 				packetNumber = 0;
-
+long 				packetNumber = 0, sendPacket = 0, recvPacket = 0;
+struct timeval			allTime;
 
 #define ICMP_ECHO   		8					// echo request
 
@@ -71,7 +71,6 @@ int echoRequestSend(pid_t pid)						// send ICMP datagram
   icmp->icmp_code = 0;
   icmp->icmp_id = pid;							// use pid as id
   icmp->icmp_seq = packetNumber++;
-  gettimeofday((struct timeval *)icmp->icmp_data,  NULL);		// creation time
   icmpLen = 8 + 56;							// sizeof(icmp_header) == 8 bytes +
 									// sizeof(icmp_data) == 56 bytes
   icmp->icmp_cksum = 0;
@@ -81,7 +80,7 @@ int echoRequestSend(pid_t pid)						// send ICMP datagram
   ip->ip_tos	= 0;							// type of service
   ipLen = sizeof(struct ip) + icmpLen;					// ip header + ip data lenght
   ip->ip_len	= htons(ipLen);						// host to network byte order  
-  ip->ip_id = htons(321);						// id packet
+  ip->ip_id = htons(rand());						// id packet
   // flags (3 pcs) does not defined in struct ip
   ip->ip_off = htons(0);						// fragment offset
   ip->ip_ttl = 255;							// time to live
@@ -89,6 +88,8 @@ int echoRequestSend(pid_t pid)						// send ICMP datagram
   ip->ip_sum = 0;							// checkSum only for ip header  
   ip->ip_src = srcHostAddr.sin_addr;					// src ip address
   ip->ip_dst = dstHostAddr.sin_addr;					// dst ip address
+/* set time of creation at ICMP data field */  
+  gettimeofday((struct timeval *)icmp->icmp_data,  NULL);		// creation time
 /* checkSums calculate */ 		
   icmp->icmp_cksum = cksum((unsigned short *)icmp, icmpLen) - 1; 	// icmp checkSum calculate for icmp header and icmp data
   ip->ip_sum = cksum((unsigned short *)ip, ipLen-icmpLen);		// ip checkSum calculate only for ip header
@@ -96,32 +97,76 @@ int echoRequestSend(pid_t pid)						// send ICMP datagram
   while(sendto(rawSock, ip, ipLen, 0,
     (struct sockaddr *)&dstHostAddr, sizeof(dstHostAddr)) < ipLen)	// wait, while sent all
   {
-    //fprintf(stderr, "pid: %d, echoRequestSend sendto errno: %d\n", pid, errno);
 									// errno == 4 means EINTR == Interrupted system call 
     if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
+    {
+      fprintf(stderr, "pid: %d, echoRequestSend sendto errno: %d\n", pid, errno);
       return -1;							// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
+    }
   }
+  sendPacket++;
   return 0;
 }
 
-int echoReplyProcessing(pid_t pid)					// ip packet disassembly
+int echoReplyProcessing(pid_t pid, char *ipDatagram, int ipLen, struct timeval *recvTime,
+			struct sockaddr_in remoteHostAddr)		// ip packet disassembly
 {
   
-  return 0;
+  int iplen;
+  int icmplen;
+  struct ip *ip;
+  struct icmp *icmp;
+  struct timeval *tvsend;
+  double rtt, tsum, tmax, tmin;
+  ip = (struct ip *) ipDatagram; /* начало IP- заголовка */
+  iplen = ip->ip_hl << 2; /* длина IP- заголовка */
+  icmp = (struct icmp *) (ipDatagram + iplen); /* начало
+  ICMP- заголовка */
+  if ( (icmplen = ipLen - iplen) < 8)
+  /* длина
+  ICMP- заголовка */
+  fprintf(stderr, "icmplen (%d) < 8", icmplen);
+    tvsend = (struct timeval *) icmp->icmp_data;
+    if(recvTime->tv_usec - tvsend->tv_usec < 0)
+    {
+      --recvTime->tv_sec;
+      recvTime->tv_usec += 1000000;
+    }
+    recvTime->tv_sec -= tvsend->tv_sec;
+    /* время оборота пакета (round-trip time) */
+    rtt = recvTime->tv_sec * 1000.0 + recvTime->tv_usec  / 1000.0;
+    recvPacket++;
+    tsum += rtt;
+    if (rtt < tmin)
+    tmin = rtt;
+    if (rtt > tmax)
+    tmax = rtt;
+    printf("pid: %d, %d bytes from %s: icmp_seq=%u, ttl=%d, time=%.1f ms\n", pid, 
+	  icmplen, inet_ntoa(remoteHostAddr.sin_addr), icmp->icmp_seq, ip->ip_ttl, rtt);
+    return 0;
 }
 
 void hdl_SIGINT(int sig, siginfo_t *siginfo, void *context)		// handler for SIGINT (Ctrl+C)
 {
     if (sig == SIGINT)
     {
-	if(shutdown(rawSock, SHUT_RDWR) < 0)				// deny connection raw
-	  fprintf(stderr, "pid: %d, shutdown rawSock signal errno: %d\n", getpid(), errno);
+	struct timeval endTime;
+	long timeMs = 0;
+	gettimeofday(&endTime, NULL);
+	if(endTime.tv_usec - allTime.tv_usec < 0)
+	{
+	  --endTime.tv_sec;
+	  endTime.tv_usec += 1000000;
+	}
+	endTime.tv_sec -= allTime.tv_sec;
+	timeMs = endTime.tv_sec * 1000 + endTime.tv_usec  / 1000;	
 	if(close(rawSock) < 0)						// close connection raw
 	  fprintf(stderr, "pid: %d, close rawSock signal errno: %d\n", getpid(), errno);   
-	if(shutdown(icmpSock, SHUT_RDWR) < 0)				// deny connection icmp
-	  fprintf(stderr, "pid: %d, shutdown icmpSock signal errno: %d\n", getpid(), errno);
 	if(close(icmpSock) < 0)						// close connection icmp
 	  fprintf(stderr, "pid: %d, close icmpSock signal errno: %d\n", getpid(), errno);   
+	printf("--- %s ping statistics ---\n", dstIpv4);
+	printf("%ld packets transmitted, %ld received, %ld%% packet lost, time %ld ms\n", sendPacket, recvPacket, 
+	       (sendPacket-recvPacket)*100/sendPacket, timeMs);
 	exit(0);
     }
 }
@@ -141,9 +186,11 @@ int startPing(pid_t srcPid)
 	/* show timeout
 	struct timeval		start, check;
 	*/
+	struct timeval		recvTime;
 	int 			readBytes0 = -1;
 	int 			readBytes1 = 0;
 	uint16_t		tmpPid = 0;
+	uint16_t		TYPECODE_ECHO_REPLY = 0, tmpTypeCode = 2;
 	int 			remoteHostAddrLen = sizeof(remoteHostAddr);;
 	int 			soOptionOn = 1;
 	long 			recvBufLen = (BUFFER_SIZE*sizeof(char)*BUFFER_MULT);
@@ -190,7 +237,7 @@ int startPing(pid_t srcPid)
 	myIpv4 = inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);
 /* init SIGALRM  */	
 	timer.it_value.tv_sec = 0;
-	timer.it_value.tv_usec = 1;					// activation delay == 1 msec
+	timer.it_value.tv_usec = 250;					// activation delay == 1 msec
 	timer.it_interval.tv_sec = 1;					// signal send interval == 1 sec
 	timer.it_interval.tv_usec = 0;
 	alarm.sa_flags = SA_SIGINFO;
@@ -209,19 +256,22 @@ int startPing(pid_t srcPid)
 	  return -1;
 	}		
 /* socket is associated with 'eth0' IPv4 address */	
-/*
+
 	if(bind((rawSock), (struct sockaddr *)&myHostAddr, sizeof(myHostAddr)) < 0)
 	{
 	    fprintf(stderr, "pid: %d, bind errno: %d\n", srcPid, errno);
 	    return -1;
 	}  	
-*/	
+	
 	struct pollfd tempSet;
 	int highDescSocket = 1;
 	int time_out = 4000;						// poll timeout == 4 sec
 	int retVal = -1;
+	int noReply = 0;
 	tempSet.fd = icmpSock;
 	tempSet.events = POLLIN;					// check input
+	srand(time(NULL));
+	gettimeofday(&allTime, NULL);
 	setitimer(ITIMER_REAL, &timer, NULL);				// start timer to send SIGALARM signal
 	while(1)
 	{
@@ -245,6 +295,7 @@ int startPing(pid_t srcPid)
 		return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 	      }
 	  }	
+	  gettimeofday(&recvTime, NULL);				// get packet capture time	  
 	  if(retVal)							// if input data appeared on socket
 	  {								// read, but don't remove from input queue (MSG_PEEK flag ON)
 	    while((readBytes0 = recvfrom(icmpSock, (char*)&recvBuf, recvBufLen, MSG_PEEK, 
@@ -267,8 +318,9 @@ int startPing(pid_t srcPid)
 		}
 	    }
 	    memcpy(&tmpPid, ((recvBuf)+24), sizeof(uint16_t));		// read id == pid of received ICMP datagram
-	    // printf("readbytes: %d pid: %d\n", readBytes, tmpPid);	    
-	    if(tmpPid == srcPid)					// if pid is the same
+	    memcpy(&tmpTypeCode, ((recvBuf)+20), sizeof(uint16_t));	// get ICMP datagram type and code
+	    //printf("readbytes: %d tmpPid: %d\n", readBytes0, tmpPid);	    
+	    if(tmpPid == srcPid && tmpTypeCode == TYPECODE_ECHO_REPLY)	// if pid is the same amd ICMP type and code is ICMP_ECHOREPLY
 	    {								// read datagram + remove from input queue (MSG_PEEK flag OFF)
 	      while((readBytes1 = recvfrom(icmpSock, (char*)&recvBuf, recvBufLen, 0, 
 				    (struct sockaddr*)&remoteHostAddr, &remoteHostAddrLen)) < readBytes0-readBytes1)
@@ -289,12 +341,14 @@ int startPing(pid_t srcPid)
 		  return -1;						// errno == 11 means EAGAIN or EWOULDBLOCK == Try again
 		}
 	    }
-	      echoReplyProcessing(srcPid);				// call ip datagramm disassembly
+	      echoReplyProcessing(srcPid, recvBuf, readBytes1, 
+				  &recvTime, remoteHostAddr);		// call ip datagramm disassembly
 	    }
 	  }
 	  else								// no input data on socket == poll timeout exceeded
 	  {
-	    printf("Request Timed Out: %d ms\n", time_out);
+	      printf("Request Timed Out: %d ms\n", noReply*time_out);
+	    
 	  }
 	}
 	return 0;
