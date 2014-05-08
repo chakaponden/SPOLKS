@@ -1,3 +1,10 @@
+/*
+ * requires 'xterm' app for execute
+ * all ipv4 multicast addr:
+ * 224.0.0.0 - 239.255.255.255
+ * multicast addr for test: 234.5.6.7
+ */
+
 #include <sys/ioctl.h>
 #include <net/if.h>
 #include <stdio.h>
@@ -10,12 +17,10 @@
 #include <arpa/inet.h>
 
 #define	BUFFER_SIZE  		1024
-#define	LOCAL_PORT 		"49999"
-#define ARG_ERROR_MESS		"./a.out [interface] [dstIpv4] [dstPort]"
+#define ARG_ERROR_MESS		"./a.out [interface] [dstPort] [dstIpv4]"
 
 int inOut[2];								// pipe in-out
 int 		udpSock;						// socket descriptor
-struct 		sockaddr_in thisHostAddr;				// this machine
 struct 		sockaddr_in remoteAddr;					// remote addr
 struct 		sockaddr_in recvFromAddr;				// machine, from which datagram is received
 struct 		sockaddr_in sendToAddr;					// send address
@@ -38,6 +43,7 @@ void hdl_SIGINT(int sig, siginfo_t *siginfo, void *context)		// handler for SIGI
 char* getMyIpv4(char *iface)					// inferface
 {
   struct ifreq		ifr;					// for get myIP addr
+  struct 		sockaddr_in thisHostAddr;
   int tmpSock;
   if(((tmpSock) = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0)		
   {
@@ -57,42 +63,29 @@ char* getMyIpv4(char *iface)					// inferface
   }
   return inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);
 }
-int init(char *myHostName, char *myPort, char *remoteHostName, char *remotePort)
+int init(char *remotePort, char *remoteHostName)
 {
 	int	soOptionOn = 1;							// for setsockop set option to enable
 	bzero(&sendToAddr,sizeof(struct sockaddr_in));
-	bzero(&thisHostAddr,sizeof(struct sockaddr_in));
 	bzero(&recvFromAddr,sizeof(struct sockaddr_in));
-	bzero(&remoteAddr,sizeof(struct sockaddr_in));
-	thisHostAddr.sin_family = AF_INET;
-	thisHostAddr.sin_port = htons(atoi(myPort));				// convert host byte order -> network byte order
-	thisHostAddr.sin_addr.s_addr = inet_addr(myHostName);			// old func convert IPv4 char* -> IPv4 bin 
-	
-	anyAddr.sin_family = AF_INET;
-	anyAddr.sin_port = htons(atoi(myPort));				// convert host byte order -> network byte order
-	anyAddr.sin_addr.s_addr =  htonl(INADDR_ANY);			// old func convert IPv4 char* -> IPv4 bin
+	bzero(&remoteAddr,sizeof(struct sockaddr_in));	
 	
 	sendToAddr.sin_family = AF_INET;
-	sendToAddr.sin_addr.s_addr = inet_addr(remoteHostName);			// htonl(INADDR_BROADCAST); htonl(INADDR_ANY);
+	if(remoteHostName == NULL)
+	  sendToAddr.sin_addr.s_addr = htonl(INADDR_BROADCAST);			// htonl(INADDR_BROADCAST); htonl(INADDR_ANY);
+	else
+	  sendToAddr.sin_addr.s_addr = inet_addr(remoteHostName);		    
+	sendToAddr.sin_port = htons(atoi(remotePort));
+	
 	if(((udpSock) = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0)		
 	{
 		perror("socket udpSocket: ");			// errno == 4 means EINTR == Interrupted system call 
 		fprintf(stderr, "errno: %d\n", errno);		// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
 		return -1;
 	}	
-	if(remotePort == NULL)							// if broadcast
-	{	  
-	  sendToAddr.sin_port = htons(atoi(myPort));				// convert host byte order -> network byte order
-	  memcpy(&remoteAddr, &anyAddr, sizeof(remoteAddr));
-	  fprintf(stdout, "*** %s:%s start chat in broadcast mode ***\n", myHostName, myPort);
-	}
-	else									// if multicast
-	{ 
-	  sendToAddr.sin_port = htons(atoi(remotePort));				// convert host byte order -> network byte order
-	  memcpy(&remoteAddr, &sendToAddr, sizeof(remoteAddr));
-	  fprintf(stdout, "*** %s:%s start chat in multicast mode with %s:%s ***\n",
-		  myHostName, myPort, remoteHostName, remotePort);
-	}
+	remoteAddr.sin_family = AF_INET;
+	remoteAddr.sin_addr.s_addr =  htonl(INADDR_ANY);
+	remoteAddr.sin_port = htons(atoi(remotePort));
 	setsockopt(udpSock, SOL_SOCKET, 
 		    SO_REUSEADDR, &soOptionOn, sizeof (soOptionOn));	// reuse ADDR when socket in TIME_WAIT condition									
 	setsockopt(udpSock, SOL_SOCKET, 				// resize receive buffer
@@ -106,6 +99,19 @@ int init(char *myHostName, char *myPort, char *remoteHostName, char *remotePort)
 	    perror("bind udpSocket: ");				// errno == 4 means EINTR == Interrupted system call 
 	    fprintf(stderr, "errno: %d\n", errno);		// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
 	    return -1;
+	}
+	/* use setsockopt() to request that the kernel join a multicast group */
+	if(remoteHostName != NULL)
+	{
+	  struct ip_mreq mreq;
+	  mreq.imr_multiaddr.s_addr=inet_addr(remoteHostName);
+	  mreq.imr_interface.s_addr=htonl(INADDR_ANY);
+	  if (setsockopt(udpSock,IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0)
+	  {
+		perror("setsockopt join multicast group");
+		fprintf(stderr, "errno: %d\n", errno);
+		return -1;
+	  }
 	}
 	return 0;
 }
@@ -228,6 +234,8 @@ int main(int argc, char *argv[])
     {
       case -1:
       {
+	perror("fork error: ");
+	fprintf(stderr, "errno: %d\n", errno);
 	break;
       }
       case 0:
@@ -250,10 +258,17 @@ int main(int argc, char *argv[])
 	  return -1;
 	}		
 	system("clear");
-	if(argc == 4)
-	  init(getMyIpv4(argv[1]), LOCAL_PORT, argv[2], argv[3]);	
-	else
-	  init(getMyIpv4(argv[1]), LOCAL_PORT, argv[2], NULL);
+	if(argc == 4)							// multicast
+	{
+	  init(argv[2], argv[3]);
+	  fprintf(stdout, "*** %s:%s start udp chat in multicast mode with %s:%s ***\n",
+		  getMyIpv4(argv[1]), argv[2], argv[3], argv[2]);
+	}
+	else								// broadcast
+	{
+	  init(argv[2], NULL);
+	  fprintf(stdout, "*** %s:%s start udp chat in broadcast mode ***\n", getMyIpv4(argv[1]), argv[2]);
+	}
 	startRecv();
 	break;
       }
