@@ -29,7 +29,7 @@ struct 		ip_mreq mreq;
 int		multicastEnable = 0;
 long 		sendBufLen = BUFFER_SIZE;
 long		recvBufLen = BUFFER_SIZE * 5;
-    int ppid;
+int 		ppid;
 
 void hdl_SIGINT_PARENT(int sig, siginfo_t *siginfo, void *context)		// handler for SIGINT (Ctrl+C)
 {
@@ -43,6 +43,7 @@ void hdl_SIGINT_PARENT(int sig, siginfo_t *siginfo, void *context)		// handler f
 		fprintf(stderr, "errno: %d\n", errno);
 	}
       }
+      shutdown(udpSock, SHUT_RDWR);
       if(close(udpSock) < 0)						// close connection
 	fprintf(stderr, "pid: %d, close udpSock signal errno: %d\n", getpid(), errno);  
       exit(0);
@@ -304,13 +305,13 @@ int main(int argc, char *argv[])
 	if(argc == 4)							// multicast
 	{
 	  multicastEnable = 1;
-	  init(argv[1], argv[2], argv[3]);
+	  init(getMyIpv4(argv[1]), argv[2], argv[3]);
 	  fprintf(stdout, "*** %s:%s start udp chat in multicast mode with %s:%s ***\n",
 		  getMyIpv4(argv[1]), argv[2], argv[3], argv[2]);
 	}
 	else								// broadcast
 	{
-	  init(argv[1], argv[2], NULL);
+	  init(getMyIpv4(argv[1]), argv[2], NULL);
 	  fprintf(stdout, "*** %s:%s start udp chat in broadcast mode ***\n", getMyIpv4(argv[1]), argv[2]);
 	}
 	startRecv();
