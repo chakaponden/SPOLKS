@@ -19,25 +19,45 @@
 #define	BUFFER_SIZE  		1024
 #define ARG_ERROR_MESS		"./a.out [interface] [dstPort] [dstIpv4]"
 
-int inOut[2];								// pipe in-out
+int 		inOut[2];						// pipe in-out
 int 		udpSock;						// socket descriptor
 struct 		sockaddr_in remoteAddr;					// remote addr
 struct 		sockaddr_in recvFromAddr;				// machine, from which datagram is received
 struct 		sockaddr_in sendToAddr;					// send address
 struct 		sockaddr_in anyAddr;					// any address
+struct 		ip_mreq mreq;
+int		multicastEnable = 0;
 long 		sendBufLen = BUFFER_SIZE;
 long		recvBufLen = BUFFER_SIZE * 5;
+    int ppid;
 
-
-void hdl_SIGINT(int sig, siginfo_t *siginfo, void *context)		// handler for SIGINT (Ctrl+C)
+void hdl_SIGINT_PARENT(int sig, siginfo_t *siginfo, void *context)		// handler for SIGINT (Ctrl+C)
 {
     if (sig == SIGINT)
     {
-	if(close(udpSock) < 0)						// close connection
-	  fprintf(stderr, "pid: %d, close udpSock signal errno: %d\n", getpid(), errno);  
-	exit(0);
+      if(multicastEnable)
+      {
+	if (setsockopt(udpSock,IPPROTO_IP, IP_DROP_MEMBERSHIP, &mreq, sizeof(mreq)) < 0)
+	{
+		perror("setsockopt drop multicast group");
+		fprintf(stderr, "errno: %d\n", errno);
+	}
+      }
+      if(close(udpSock) < 0)						// close connection
+	fprintf(stderr, "pid: %d, close udpSock signal errno: %d\n", getpid(), errno);  
+      exit(0);
     }
 }
+
+void hdl_SIGINT_CHILD(int sig, siginfo_t *siginfo, void *context)		// handler for SIGINT (Ctrl+C)
+{
+    if (sig == SIGINT)
+    {
+      kill(ppid, SIGINT);
+      exit(0);
+    }
+}
+
 
 
 char* getMyIpv4(char *iface)					// inferface
@@ -63,7 +83,7 @@ char* getMyIpv4(char *iface)					// inferface
   }
   return inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);
 }
-int init(char *remotePort, char *remoteHostName)
+int init(char *myHostAddr, char *remotePort, char *remoteHostName)
 {
 	int	soOptionOn = 1;							// for setsockop set option to enable
 	bzero(&sendToAddr,sizeof(struct sockaddr_in));
@@ -71,10 +91,16 @@ int init(char *remotePort, char *remoteHostName)
 	bzero(&remoteAddr,sizeof(struct sockaddr_in));	
 	
 	sendToAddr.sin_family = AF_INET;
-	if(remoteHostName == NULL)
+	if(!multicastEnable)							// broadcast
+	{
 	  sendToAddr.sin_addr.s_addr = htonl(INADDR_BROADCAST);			// htonl(INADDR_BROADCAST); htonl(INADDR_ANY);
-	else
-	  sendToAddr.sin_addr.s_addr = inet_addr(remoteHostName);		    
+	  remoteAddr.sin_addr.s_addr =  htonl(INADDR_ANY);
+	}
+	else									// multicast
+	{
+	  sendToAddr.sin_addr.s_addr = inet_addr(remoteHostName);
+	  remoteAddr.sin_addr.s_addr =  inet_addr(remoteHostName);
+	}
 	sendToAddr.sin_port = htons(atoi(remotePort));
 	
 	if(((udpSock) = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0)		
@@ -83,8 +109,7 @@ int init(char *remotePort, char *remoteHostName)
 		fprintf(stderr, "errno: %d\n", errno);		// errno == 11 means EAGAIN or EWOULDBLOCK == Try again	
 		return -1;
 	}	
-	remoteAddr.sin_family = AF_INET;
-	remoteAddr.sin_addr.s_addr =  htonl(INADDR_ANY);
+	remoteAddr.sin_family = AF_INET;	
 	remoteAddr.sin_port = htons(atoi(remotePort));
 	setsockopt(udpSock, SOL_SOCKET, 
 		    SO_REUSEADDR, &soOptionOn, sizeof (soOptionOn));	// reuse ADDR when socket in TIME_WAIT condition									
@@ -94,6 +119,12 @@ int init(char *remotePort, char *remoteHostName)
 		    SO_SNDBUF, &sendBufLen, sizeof(sendBufLen));
 	setsockopt(udpSock, SOL_SOCKET,
 		   SO_BROADCAST, &soOptionOn, sizeof(soOptionOn));	// broadcast on	
+	/* when bind to multicast addr - then send IGMP message to router from which datagram stream will be send
+	 * IGMP message for add this IP addr to destination multicast group
+	 * if you want several multicst group from one socket, then you need
+	 * to bind to addr '0.0.0.0' and manually determine destination addr of each received datagram
+	 * or you need to use IGMPv3 and specify sender's addr for each multicast group 
+	 */
 	if(bind((udpSock), (struct sockaddr *)&remoteAddr, sizeof(remoteAddr)) < 0)
 	{
 	    perror("bind udpSocket: ");				// errno == 4 means EINTR == Interrupted system call 
@@ -101,11 +132,10 @@ int init(char *remotePort, char *remoteHostName)
 	    return -1;
 	}
 	/* use setsockopt() to request that the kernel join a multicast group */
-	if(remoteHostName != NULL)
+	if(multicastEnable)
 	{
-	  struct ip_mreq mreq;
 	  mreq.imr_multiaddr.s_addr=inet_addr(remoteHostName);
-	  mreq.imr_interface.s_addr=htonl(INADDR_ANY);
+	  mreq.imr_interface.s_addr=inet_addr(myHostAddr);
 	  if (setsockopt(udpSock,IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0)
 	  {
 		perror("setsockopt join multicast group");
@@ -204,7 +234,10 @@ int startRecv()
 	    return -1;					
 	  }
 	}
-	sprintf(recvFromAddrChar, "[%s:%d]: ", inet_ntoa(recvFromAddr.sin_addr), ntohs(recvFromAddr.sin_port));
+	if(multicastEnable)
+	  sprintf(recvFromAddrChar, "[%s:%d]: ", inet_ntoa(recvFromAddr.sin_addr), ntohs(recvFromAddr.sin_port));
+	else
+	  sprintf(recvFromAddrChar, "[%s]: ", inet_ntoa(recvFromAddr.sin_addr));
 	write(STDOUT_FILENO, recvFromAddrChar, strlen(recvFromAddrChar));      
 	write(STDOUT_FILENO, readSocketBuff, readSocketBytes);    
 	write(STDOUT_FILENO, "\n ", 1);
@@ -216,15 +249,24 @@ int startRecv()
 
 int main(int argc, char *argv[])
 {
-  if(argc != 3 && argc != 4)
+  if(argc < 3)
   {
     puts(ARG_ERROR_MESS);
     return -1;
   }
-  if(argc == 4 && !strcmp(argv[1], "childInput"))
+  if(argc == 5 && !strcmp(argv[1], "childInput"))
   {
+    struct sigaction closeTerm;
+    closeTerm.sa_flags = SA_SIGINFO;	
+    closeTerm.sa_sigaction = &hdl_SIGINT_CHILD;
+    if(sigaction(SIGINT, &closeTerm, NULL) < 0)			// set handler for SIGINT signal (CTRL+C)
+    {
+      fprintf(stderr, "pid: %d, sigaction closeTerm", getpid());
+      return -1;
+    }		
     inOut[0] = atoi(argv[2]);
     inOut[1] = atoi(argv[3]);
+    ppid = atoi(argv[4]);
     startSend();
   }
   else
@@ -240,10 +282,11 @@ int main(int argc, char *argv[])
       }
       case 0:
       {
-	char stdIn[6], stdOut[6];
+	char stdIn[6], stdOut[6], oldPpid[6];
 	sprintf(stdIn,"%d",inOut[0]);
 	sprintf(stdOut,"%d",inOut[1]);
-	char *argList[] = { "xterm", "-e", argv[0], "childInput", stdIn, stdOut, NULL };
+	sprintf(oldPpid,"%d",getppid());
+	char *argList[] = { "xterm", "-e", argv[0], "childInput", stdIn, stdOut, oldPpid, NULL };
 	execvp("xterm", argList);
 	break;
       }
@@ -251,7 +294,7 @@ int main(int argc, char *argv[])
       {
 	struct sigaction closeTerm;
 	closeTerm.sa_flags = SA_SIGINFO;	
-	closeTerm.sa_sigaction = &hdl_SIGINT;
+	closeTerm.sa_sigaction = &hdl_SIGINT_PARENT;
 	if(sigaction(SIGINT, &closeTerm, NULL) < 0)			// set handler for SIGINT signal (CTRL+C)
 	{
 	  fprintf(stderr, "pid: %d, sigaction closeTerm", getpid());
@@ -260,13 +303,14 @@ int main(int argc, char *argv[])
 	system("clear");
 	if(argc == 4)							// multicast
 	{
-	  init(argv[2], argv[3]);
+	  multicastEnable = 1;
+	  init(argv[1], argv[2], argv[3]);
 	  fprintf(stdout, "*** %s:%s start udp chat in multicast mode with %s:%s ***\n",
 		  getMyIpv4(argv[1]), argv[2], argv[3], argv[2]);
 	}
 	else								// broadcast
 	{
-	  init(argv[2], NULL);
+	  init(argv[1], argv[2], NULL);
 	  fprintf(stdout, "*** %s:%s start udp chat in broadcast mode ***\n", getMyIpv4(argv[1]), argv[2]);
 	}
 	startRecv();
