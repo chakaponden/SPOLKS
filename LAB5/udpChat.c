@@ -1,4 +1,7 @@
 /*
+ * keys mapping:
+ * F1 == send IGMP join multicast group
+ * F2 == send IGMP drop multicast group
  * requires 'xterm' app for execute
  * all ipv4 multicast addr:
  * 224.0.0.0 - 239.255.255.255
@@ -15,6 +18,7 @@
 #include <errno.h>
 #include <poll.h>
 #include <arpa/inet.h>
+#include <termios.h>
 
 #define	BUFFER_SIZE  		1024
 #define ARG_ERROR_MESS		"./a.out [interface] [dstPort] [dstIpv4]"
@@ -30,6 +34,25 @@ int		multicastEnable = 0;
 long 		sendBufLen = BUFFER_SIZE;
 long		recvBufLen = BUFFER_SIZE * 5;
 int 		ppid;
+static struct 	termios stored_settings;
+     
+void set_keypress(void)
+{
+  struct termios new_settings;
+  tcgetattr(0,&stored_settings);
+  new_settings = stored_settings;
+  /* Disable canonical mode, and set buffer size to 1 byte */
+  new_settings.c_lflag &= (~ICANON);
+  new_settings.c_cc[VTIME] = 0;
+  new_settings.c_cc[VMIN] = 1;   
+  tcsetattr(0,TCSANOW,&new_settings);
+  return;
+}     
+void reset_keypress(void)
+{
+  tcsetattr(0,TCSANOW,&stored_settings);
+  return;
+}
 
 void hdl_SIGINT_PARENT(int sig, siginfo_t *siginfo, void *context)		// handler for SIGINT (Ctrl+C)
 {
@@ -39,14 +62,61 @@ void hdl_SIGINT_PARENT(int sig, siginfo_t *siginfo, void *context)		// handler f
       {
 	if (setsockopt(udpSock,IPPROTO_IP, IP_DROP_MEMBERSHIP, &mreq, sizeof(mreq)) < 0)
 	{
+	  if(errno != 99)
+	  {
 		perror("setsockopt drop multicast group");
 		fprintf(stderr, "errno: %d\n", errno);
+	  }
 	}
       }
       shutdown(udpSock, SHUT_RDWR);
       if(close(udpSock) < 0)						// close connection
 	fprintf(stderr, "pid: %d, close udpSock signal errno: %d\n", getpid(), errno);  
       exit(0);
+    }
+}
+
+void hdl_SIGUSR1_PARENT(int sig, siginfo_t *siginfo, void *context)		// handler for SIGUSR1 == join multicast group
+{
+    if (sig == SIGUSR1)
+    {
+      if(multicastEnable)
+      {
+	if (setsockopt(udpSock, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0)
+	{
+	  if(errno == 98)
+	    fprintf(stdout, "!!! You already join multicast group !!!\n");
+	  else
+	  {
+	    perror("setsockopt join multicast group: ");
+	    fprintf(stderr, "errno: %d\n", errno);
+	  }
+	}
+	else
+	  fprintf(stdout, "*** Join multicast group successful! ***\n");
+      }
+    }
+}
+
+void hdl_SIGUSR2_PARENT(int sig, siginfo_t *siginfo, void *context)		// handler for SIGUSR2 == drop multicast group
+{
+    if (sig == SIGUSR2)
+    {
+      if(multicastEnable)
+      {
+	if (setsockopt(udpSock, IPPROTO_IP, IP_DROP_MEMBERSHIP, &mreq, sizeof(mreq)) < 0)
+	{
+	  if(errno == 99)
+	    fprintf(stdout, "!!! You did not join multicast group !!!	\n");
+	  else
+	  {
+	    perror("setsockopt join multicast group: ");
+	    fprintf(stderr, "errno: %d\n", errno);
+	  }
+	}
+	else
+	  fprintf(stdout, "*** Drop multicast group successful! ***\n");
+      }
     }
 }
 
@@ -120,12 +190,6 @@ int init(char *myHostAddr, char *remotePort, char *remoteHostName)
 		    SO_SNDBUF, &sendBufLen, sizeof(sendBufLen));
 	setsockopt(udpSock, SOL_SOCKET,
 		   SO_BROADCAST, &soOptionOn, sizeof(soOptionOn));	// broadcast on	
-	/* when bind to multicast addr - then send IGMP message to router from which datagram stream will be send
-	 * IGMP message for add this IP addr to destination multicast group
-	 * if you want several multicst group from one socket, then you need
-	 * to bind to addr '0.0.0.0' and manually determine destination addr of each received datagram
-	 * or you need to use IGMPv3 and specify sender's addr for each multicast group 
-	 */
 	if(bind((udpSock), (struct sockaddr *)&remoteAddr, sizeof(remoteAddr)) < 0)
 	{
 	    perror("bind udpSocket: ");				// errno == 4 means EINTR == Interrupted system call 
@@ -133,6 +197,12 @@ int init(char *myHostAddr, char *remotePort, char *remoteHostName)
 	    return -1;
 	}
 	/* use setsockopt() to request that the kernel join a multicast group */
+	/* when setsockoption IP_ADD_MEMBERSHIP - then send IGMP message to router from which datagram stream will be send
+	 * IGMP message for add this IP addr to destination multicast group
+	 * if you want several multicst group from one socket, then you need
+	 * to bind to addr '0.0.0.0' and manually determine destination addr of each received datagram
+	 * or you need to use IGMPv3 and specify sender's addr for each multicast group 
+	 */
 	if(multicastEnable)
 	{
 	  mreq.imr_multiaddr.s_addr=inet_addr(remoteHostName);
@@ -149,18 +219,44 @@ int init(char *myHostAddr, char *remotePort, char *remoteHostName)
 int startSend()
 {
   char helloMess[] = "[ENTER YOUR MESSAGE HERE]\n";
-  char inBuf[1024];
+  char inBuf[1024] = { 0 };
   close(inOut[0]);
   /*
   dup2(inOut[1], STDOUT_FILENO);
   close(inOut[1]);
   */
-  int readBytes = 0;
+  int i;
+  int inputChar;
+  set_keypress();
   while(1)
   {
     write(STDOUT_FILENO, helloMess, strlen(helloMess));
-    readBytes = fscanf(stdin, "%s", inBuf);
+    i = 0;
+    while((inBuf[i] = (char)getchar()) != '\n')
+    {      
+      switch(inBuf[i])
+      {
+	case 80:			// F1 == send IGMP join group
+	{
+	  fprintf(stdout, "\b\b\b\b    \b\b\b\b");
+	  kill(ppid, SIGUSR1);
+	  break;
+	}
+	case 81:			// F2 == send IGMP drop group
+	{
+	  fprintf(stdout, "\b\b\b\b    \b\b\b\b");
+	  kill(ppid, SIGUSR2);
+	  break;
+	}
+	default:
+	{	
+	  i++;
+	  break;
+	}	
+      }
     //write(STDOUT_FILENO, inBuf, strlen(inBuf));
+    }
+    inBuf[i] = '\0';    
     write(inOut[1], inBuf, strlen(inBuf));
     system("clear");
   }
@@ -306,6 +402,24 @@ int main(int argc, char *argv[])
 	{
 	  multicastEnable = 1;
 	  init(getMyIpv4(argv[1]), argv[2], argv[3]);
+	  
+	  struct sigaction joinMulticastGroup;
+	  joinMulticastGroup.sa_flags = SA_SIGINFO;	
+	  joinMulticastGroup.sa_sigaction = &hdl_SIGUSR1_PARENT;
+	  if(sigaction(SIGUSR1, &joinMulticastGroup, NULL) < 0)		// set handler for SIGUSR1 signal joinMulticastGroup
+	  {
+	    fprintf(stderr, "pid: %d, sigaction joinMulticastGroup", getpid());
+	    return -1;
+	  }		
+	  struct sigaction dropMulticastGroup;
+	  dropMulticastGroup.sa_flags = SA_SIGINFO;	
+	  dropMulticastGroup.sa_sigaction = &hdl_SIGUSR2_PARENT;
+	  if(sigaction(SIGUSR2, &dropMulticastGroup, NULL) < 0)		// set handler for SIGUSR2 signal dropMulticastGroup
+	  {
+	    fprintf(stderr, "pid: %d, sigaction dropMulticastGroup", getpid());
+	    return -1;
+	  }	
+	  
 	  fprintf(stdout, "*** %s:%s start udp chat in multicast mode with %s:%s ***\n",
 		  getMyIpv4(argv[1]), argv[2], argv[3], argv[2]);
 	}
