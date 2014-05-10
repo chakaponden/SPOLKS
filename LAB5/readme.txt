@@ -9,6 +9,7 @@ interface: eth0/wlan0/other
  * keys mapping:
  * F1 == send IGMP join multicast group
  * F2 == send IGMP drop multicast group
+ * F3 == reconnect  new multicast group
  * requires 'xterm' app for execute
  * all ipv4 multicast addr:
  * 224.0.0.0 - 239.255.255.255
