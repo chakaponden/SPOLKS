@@ -59,6 +59,58 @@ void reset_keypress(void)
   return;
 }
 
+char* getBroadCast(char *host)
+{
+  int sck;
+  char          buf[1024];
+	struct ifconf ifc;
+	struct ifreq *ifr;
+	int           nInterfaces;
+	int           i;
+	if((sck = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
+	{
+		perror("socket getBroadCast: ");
+		return NULL;
+	}
+	ifc.ifc_len = sizeof(buf);
+	ifc.ifc_buf = buf;
+	if(ioctl(sck, SIOCGIFCONF, &ifc) < 0)
+	{
+		perror("ioctl(SIOCGIFCONF) getBroadCast :");
+		return NULL;
+	}
+	/* Iterate through the list of interfaces. */
+	ifr         = ifc.ifc_req;
+	nInterfaces = ifc.ifc_len / sizeof(struct ifreq);
+	for(i = 0; i < nInterfaces; i++)
+	{
+		struct ifreq *item = &ifr[i];		
+	/* Show the device name and IP address */
+	/*
+		printf("%s: IP %s",
+		       item->ifr_name,
+		       inet_ntoa(((struct sockaddr_in *)&item->ifr_addr)->sin_addr));
+	*/
+	/* Get the MAC address */
+	/*
+		if(ioctl(sck, SIOCGIFHWADDR, item) < 0)
+		{
+			perror("ioctl(SIOCGIFHWADDR)");
+			return 1;
+		}
+	*/
+	/* Get the broadcast address */
+	
+	if(!strcmp(item->ifr_name, host))
+	{
+	  if(ioctl(sck, SIOCGIFBRDADDR, item) >= 0)
+			return inet_ntoa(((struct sockaddr_in *)&item->ifr_broadaddr)->sin_addr);
+	}
+	
+	}
+  return NULL;
+}
+
 
 char* getMyIpv4(char *iface)					// inferface
 {
@@ -171,6 +223,21 @@ void hdl_SIGINT_CHILD(int sig, siginfo_t *siginfo, void *context)		// handler fo
     }
 }
 
+char* getSubnetNetmask(char *interface)
+{
+ int fd;
+ struct ifreq ifr;
+ fd = socket(AF_INET, SOCK_DGRAM, 0);
+ /* I want an IPv4 netmask */
+ ifr.ifr_addr.sa_family = AF_INET;
+ /* I want netmask attached to "eth0" */
+ strncpy(ifr.ifr_name, interface, IFNAMSIZ-1);
+ ioctl(fd, SIOCGIFNETMASK, &ifr);
+ close(fd);
+ /* display result */
+ return inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);
+}
+
 
 int init(char *myHostAddr, char *remotePort, char *remoteHostName)
 {
@@ -180,9 +247,10 @@ int init(char *myHostAddr, char *remotePort, char *remoteHostName)
 	bzero(&remoteAddr,sizeof(struct sockaddr_in));	
 	
 	sendToAddr.sin_family = AF_INET;
+	//fprintf(stdout, "broad: %s\n", getBroadCast(interface));
 	if(!multicastEnable)							// broadcast
 	{
-	  sendToAddr.sin_addr.s_addr = htonl(INADDR_BROADCAST);			// htonl(INADDR_BROADCAST); htonl(INADDR_ANY);
+	  sendToAddr.sin_addr.s_addr = inet_addr(getBroadCast(interface));	// htonl(INADDR_BROADCAST); htonl(INADDR_ANY);
 	  remoteAddr.sin_addr.s_addr =  htonl(INADDR_ANY);
 	}
 	else									// multicast
@@ -253,52 +321,60 @@ int startSend()
   set_keypress();
   while(1)
   {
-    i = 0;
-    write(STDOUT_FILENO, helloMess, strlen(helloMess));
+    i = 0;    
+    if(multicastEnable)
+      write(STDOUT_FILENO, helloMess, strlen(helloMess));
+    else
+      write(STDOUT_FILENO, (helloMess+108), 26);
     while((inBuf[i] = (char)getchar()) != '\n')
     {      
-      switch(inBuf[i])
+      if(multicastEnable)
       {
-	case 80:			// F1 == send IGMP join group
+	switch(inBuf[i])
 	{
-	  fprintf(stdout, "\b\b\b\b    \b\b\b\b");
-	  kill(ppid, SIGUSR1);
-	  inBuf[i] = '0';
-	  break;
+	  case 80:			// F1 == send IGMP join group
+	  {
+	    fprintf(stdout, "\b\b\b\b    \b\b\b\b");
+	    kill(ppid, SIGUSR1);
+	    inBuf[i] = '0';
+	    break;
+	  }
+	  case 81:			// F2 == send IGMP drop group
+	  {
+	    fprintf(stdout, "\b\b\b\b    \b\b\b\b");
+	    kill(ppid, SIGUSR2);
+	    inBuf[i] = '0';
+	    break;
+	  }
+	  case 82:			// F3 == connect new multicast
+	  {
+	    //fprintf(stdout, "\b\b\b\b    \b\b\b\b");
+	    system("clear");
+	    kill(ppid, SIGVTALRM);
+	    write(STDOUT_FILENO, "[ENTER MULTICAST IP]\n", 22);
+	    reset_keypress();
+	    fscanf(stdin, "%s", inBuf);
+	    write(inOut[1], inBuf, strlen(inBuf));	
+	    system("clear");
+	    write(STDOUT_FILENO, "[ENTER MULTICAST PORT]\n", 23);
+	    fscanf(stdin, "%s", inBuf);
+	    write(inOut[1], inBuf, strlen(inBuf));	
+	    system("clear");
+	    write(STDOUT_FILENO, "[ENTER YOUR MESSAGE HERE]\n", strlen(helloMess));
+	    set_keypress();
+	    i = 0;
+	    inBuf[i] = '0';
+	    break;
+	  }
+	  default:
+	  {	
+	    i++;
+	    break;
+	  }	
 	}
-	case 81:			// F2 == send IGMP drop group
-	{
-	  fprintf(stdout, "\b\b\b\b    \b\b\b\b");
-	  kill(ppid, SIGUSR2);
-	  inBuf[i] = '0';
-	  break;
-	}
-	case 82:			// F3 == connect new multicast
-	{
-	  //fprintf(stdout, "\b\b\b\b    \b\b\b\b");
-	  system("clear");
-	  kill(ppid, SIGVTALRM);
-	  write(STDOUT_FILENO, "[ENTER MULTICAST IP]\n", 22);
-	  reset_keypress();
-	  fscanf(stdin, "%s", inBuf);
-	  write(inOut[1], inBuf, strlen(inBuf));	
-	  system("clear");
-	  write(STDOUT_FILENO, "[ENTER MULTICAST PORT]\n", 23);
-	  fscanf(stdin, "%s", inBuf);
-	  write(inOut[1], inBuf, strlen(inBuf));	
-	  system("clear");
-	  write(STDOUT_FILENO, "[ENTER YOUR MESSAGE HERE]\n", strlen(helloMess));
-	  set_keypress();
-	  i = 0;
-	  inBuf[i] = '0';
-	  break;
-	}
-	default:
-	{	
-	  i++;
-	  break;
-	}	
       }
+      else
+	i++;
     //write(STDOUT_FILENO, inBuf, strlen(inBuf));
     }
     inBuf[i] = '\0';    
@@ -430,7 +506,7 @@ int main(int argc, char *argv[])
     puts(ARG_ERROR_MESS);
     return -1;
   }
-  if(argc == 5 && !strcmp(argv[1], "childInput"))
+  if(argc == 6 && !strcmp(argv[1], "childInput"))
   {
     struct sigaction closeTerm;
     closeTerm.sa_flags = SA_SIGINFO;	
@@ -442,12 +518,15 @@ int main(int argc, char *argv[])
     }		
     inOut[0] = atoi(argv[2]);
     inOut[1] = atoi(argv[3]);
-    ppid = atoi(argv[4]);
+    multicastEnable = atoi(argv[4]);
+    ppid = atoi(argv[5]);
     startSend();
   }
   else
   {
-    pipe(inOut);    
+    if(argc == 4)
+      multicastEnable = 1;
+    pipe(inOut);   
     switch(childPid = fork())
     {
       case -1:
@@ -458,11 +537,13 @@ int main(int argc, char *argv[])
       }
       case 0:
       {
-	char stdIn[6], stdOut[6], oldPpid[6];
+	
+	char stdIn[6], stdOut[6], oldPpid[6], multicastOn[6];
 	sprintf(stdIn,"%d",inOut[0]);
 	sprintf(stdOut,"%d",inOut[1]);
 	sprintf(oldPpid,"%d",getppid());
-	char *argList[] = { "xterm", "-e", argv[0], "childInput", stdIn, stdOut, oldPpid, NULL };
+	sprintf(multicastOn,"%d", multicastEnable);
+	char *argList[] = { "xterm", "-e", argv[0], "childInput", stdIn, stdOut, multicastOn, oldPpid, NULL };
 	execvp("xterm", argList);
 	break;
       }
@@ -477,10 +558,9 @@ int main(int argc, char *argv[])
 	  return -1;
 	}		
 	system("clear");
+	strcpy(interface, argv[1]);	
 	if(argc == 4)							// multicast
-	{
-	  strcpy(interface, argv[1]);
-	  multicastEnable = 1;
+	{	  	  
 	  init(getMyIpv4(argv[1]), argv[2], argv[3]);
 	  
 	  struct sigaction joinMulticastGroup;
@@ -505,7 +585,7 @@ int main(int argc, char *argv[])
 	  if(sigaction(SIGVTALRM, &newMulticastGroup, NULL) < 0)	// set handler for SIGVTALRM signal newMulticastGroup
 	  {
 	    fprintf(stderr, "pid: %d, sigaction newMulticastGroup", getpid());
-	    return -1;
+	    return -1;	
 	  }	  
 	  fprintf(stdout, "*** %s:%s start udp chat multicast %s:%s ***\n",
 		  getMyIpv4(argv[1]), argv[2], argv[3], argv[2]);
@@ -515,9 +595,10 @@ int main(int argc, char *argv[])
 	  init(getMyIpv4(argv[1]), argv[2], NULL);
 	  fprintf(stdout, "*** %s:%s start udp chat broadcast ***\n", getMyIpv4(argv[1]), argv[2]);
 	}
+	//fprintf(stdout,"\n%s\n", getSubnetNetmask(argv[1]));
 	close(inOut[1]);
 	dup2(inOut[0], STDIN_FILENO);
-	close(inOut[0]);
+	close(inOut[0]);	
 	while(on)
 	{
 	    startRecv();  
