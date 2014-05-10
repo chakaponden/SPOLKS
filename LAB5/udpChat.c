@@ -7,6 +7,7 @@
  * all ipv4 multicast addr:
  * 224.0.0.0 - 239.255.255.255
  * multicast addr for test: 234.5.6.7
+ * all IGMP Report sends to service IGMPv3 address 224.0.0.22
  */
 
 #include <sys/ioctl.h>
@@ -230,6 +231,11 @@ int init(char *myHostAddr, char *remotePort, char *remoteHostName)
 		fprintf(stderr, "errno: %d\n", errno);
 		return -1;
 	  }
+	  /*
+	  soOptionOn = 0;					// multicast loopback off (on by default)
+	  setsockopt(udpSock, IPPROTO_IP, IP_MULTICAST_LOOP, &soOptionOn, sizeof(soOptionOn));
+	  */
+
 	}	
 	return 0;
 }
